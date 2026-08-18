@@ -13,7 +13,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
 import type { AppState, Ingredient, Meal, MealType, Planner, ShoppingItem } from './types'
 import { mealTypes } from './data'
-import { loadState, resetState, saveState } from './storage'
+import { loadState, saveState } from './storage'
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 const dayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -159,11 +159,26 @@ function App() {
     update({ ...state, shoppingChecked: {} })
   }
 
-  async function resetApp() {
-    if (!confirm('Reset all meals and planner data to the examples?')) return
-    await resetState()
-    const loaded = await loadState()
-    setState(loaded)
+  function clearWeek() {
+    if (!state) return
+
+    const weekKeys = getWeekDates(weekOffset).map(dateKey)
+    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+
+    for (const dayKey of weekKeys) {
+      delete planner[dayKey]
+    }
+
+    if (!confirm(`Clear all planned meals for ${formatRange(getWeekDates(weekOffset))}?`)) {
+      return
+    }
+
+    update({
+      meals: state.meals,
+      ingredients: state.ingredients,
+      planner,
+      shoppingChecked: state.shoppingChecked,
+    })
   }
 
   if (!storageReady || !state) {
@@ -178,7 +193,7 @@ function App() {
             <div className="eyebrow">PERSONAL</div>
             <h1>Meal Planner</h1>
           </div>
-          <button className="text-button" onClick={resetApp}>Reset examples</button>
+          <button className="text-button" onClick={clearWeek}>Clear week</button>
         </header>
 
         <main className="content">
