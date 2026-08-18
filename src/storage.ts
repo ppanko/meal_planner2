@@ -11,6 +11,18 @@ function cloneSeed(): AppState {
   return JSON.parse(JSON.stringify(seedState)) as AppState
 }
 
+
+function normalizeState(state: Partial<AppState>): AppState {
+  const seed = cloneSeed()
+  return {
+    ingredients: state.ingredients ?? seed.ingredients,
+    meals: state.meals ?? seed.meals,
+    planner: state.planner ?? {},
+    shoppingChecked: state.shoppingChecked ?? {},
+    manualShoppingItems: state.manualShoppingItems ?? {},
+  }
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -60,12 +72,7 @@ function readLegacyLocalStorage(): AppState | null {
     const raw = localStorage.getItem(LEGACY_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as AppState
-    return {
-      ingredients: parsed.ingredients ?? cloneSeed().ingredients,
-      meals: parsed.meals ?? cloneSeed().meals,
-      planner: parsed.planner ?? {},
-      shoppingChecked: parsed.shoppingChecked ?? {},
-    }
+    return normalizeState(parsed)
   } catch {
     return null
   }
@@ -74,7 +81,7 @@ function readLegacyLocalStorage(): AppState | null {
 export async function loadState(): Promise<AppState> {
   try {
     const stored = await readIndexedDB()
-    if (stored) return stored
+    if (stored) return normalizeState(stored)
 
     // One-time migration from the previous localStorage implementation.
     const legacy = readLegacyLocalStorage()

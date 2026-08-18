@@ -20,6 +20,12 @@ export type Meal = {
 
 export type Planner = Record<string, Record<MealType, string | null>>
 
+export type ManualShoppingItem = {
+  id: string
+  name: string
+  checked: boolean
+}
+
 export type ShoppingItem = {
   ingredientId: string
   name: string
@@ -33,4 +39,5 @@ export type AppState = {
   meals: Meal[]
   planner: Planner
   shoppingChecked: Record<string, boolean>
+  manualShoppingItems: Record<string, ManualShoppingItem[]>
 }

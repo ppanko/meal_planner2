@@ -50,4 +50,5 @@ export const seedState: AppState = {
   ],
   planner: {},
   shoppingChecked: {},
+  manualShoppingItems: {},
 }

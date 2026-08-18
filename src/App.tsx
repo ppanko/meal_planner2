@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -11,7 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
-import type { AppState, Ingredient, Meal, MealType, Planner, ShoppingItem } from './types'
+import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, ShoppingItem } from './types'
 import { mealTypes } from './data'
 import { loadState, saveState } from './storage'
 
@@ -42,6 +43,8 @@ function App() {
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
 
   const shopping = useMemo(() => state ? buildShoppingList(state, weekDates) : [], [state, weekDates])
+  const shoppingWeekKey = dateKey(weekDates[0])
+  const manualShopping = state?.manualShoppingItems[shoppingWeekKey] ?? []
   const activeMeal = activeMealId && state ? state.meals.find((m) => m.id === activeMealId) ?? null : null
 
   function update(next: AppState) {
@@ -96,6 +99,7 @@ function App() {
       ingredients: state.ingredients,
       planner,
       shoppingChecked: state.shoppingChecked,
+      manualShoppingItems: state.manualShoppingItems,
     }
 
     update(nextState)
@@ -154,9 +158,64 @@ function App() {
     })
   }
 
+  function addManualShoppingItem(name: string) {
+    if (!state) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+
+    const item: ManualShoppingItem = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      checked: false,
+    }
+
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: [...current, item],
+      },
+    })
+  }
+
+  function toggleManualShoppingItem(id: string) {
+    if (!state) return
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: current.map((item) =>
+          item.id === id ? { ...item, checked: !item.checked } : item,
+        ),
+      },
+    })
+  }
+
+  function deleteManualShoppingItem(id: string) {
+    if (!state) return
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: current.filter((item) => item.id !== id),
+      },
+    })
+  }
+
   function clearCheckedShopping() {
     if (!state) return
-    update({ ...state, shoppingChecked: {} })
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    update({
+      ...state,
+      shoppingChecked: {},
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: current.map((item) => ({ ...item, checked: false })),
+      },
+    })
   }
 
   function clearWeek() {
@@ -178,6 +237,7 @@ function App() {
       ingredients: state.ingredients,
       planner,
       shoppingChecked: state.shoppingChecked,
+      manualShoppingItems: state.manualShoppingItems,
     })
   }
 
@@ -218,7 +278,18 @@ function App() {
             />
           )}
           {view === 'shopping' && (
-            <ShoppingView shopping={shopping} onToggle={toggleShopping} onClearChecked={clearCheckedShopping} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
+            <ShoppingView
+              shopping={shopping}
+              manualItems={manualShopping}
+              onToggle={toggleShopping}
+              onAddManual={addManualShoppingItem}
+              onToggleManual={toggleManualShoppingItem}
+              onDeleteManual={deleteManualShoppingItem}
+              onClearChecked={clearCheckedShopping}
+              weekDates={weekDates}
+              weekOffset={weekOffset}
+              setWeekOffset={setWeekOffset}
+            />
           )}
         </main>
 
@@ -231,7 +302,7 @@ function App() {
           </button>
           <button className={view === 'shopping' ? 'active' : ''} onClick={() => setView('shopping')}>
             <span>✓</span><small>Shopping</small>
-            {shopping.some((x) => !x.checked) && <i />}
+            {(shopping.some((x) => !x.checked) || manualShopping.some((x) => !x.checked)) && <i />}
           </button>
         </nav>
 
@@ -514,19 +585,103 @@ function MealForm({ meal, ingredients, onCancel, onSave, onCreateIngredient }: {
   )
 }
 
-function ShoppingView({ shopping, onToggle, onClearChecked, weekDates, weekOffset, setWeekOffset }: { shopping: ShoppingItem[]; onToggle: (id: string) => void; onClearChecked: () => void; weekDates: Date[]; weekOffset: number; setWeekOffset: (n: number) => void }) {
-  const remaining = shopping.filter((i) => !i.checked)
-  return <section>
-    <div className="section-header">
-      <div><div className="eyebrow">SHOPPING</div><h2>{formatRange(weekDates)}</h2></div>
-      <div className="week-controls"><button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button><button onClick={() => setWeekOffset(0)}>Today</button><button onClick={() => setWeekOffset(weekOffset + 1)}>›</button></div>
-    </div>
-    {shopping.some((x) => x.checked) && <div style={{ marginBottom: 14 }}><button className="secondary" onClick={onClearChecked}>Clear checks</button></div>}
-    {shopping.length === 0 ? <div className="empty-state"><h3>No meals planned</h3><p>Add meals to your weekly planner and the shopping list will appear here.</p></div> : <>
-      <p className="shopping-summary">{remaining.length} item{remaining.length === 1 ? '' : 's'} remaining</p>
-      <div className="shopping-list">{shopping.map((item) => <label className={`shopping-item ${item.checked ? 'checked' : ''}`} key={item.ingredientId}><input type="checkbox" checked={item.checked} onChange={() => onToggle(item.ingredientId)} /><span className="checkmark" /><span className="shopping-name">{item.name}</span><strong>{formatQuantity(item.quantity)} {item.unit}</strong></label>)}</div>
-    </>}
-  </section>
+function ShoppingView({
+  shopping,
+  manualItems,
+  onToggle,
+  onAddManual,
+  onToggleManual,
+  onDeleteManual,
+  onClearChecked,
+  weekDates,
+  weekOffset,
+  setWeekOffset,
+}: {
+  shopping: ShoppingItem[]
+  manualItems: ManualShoppingItem[]
+  onToggle: (id: string) => void
+  onAddManual: (name: string) => void
+  onToggleManual: (id: string) => void
+  onDeleteManual: (id: string) => void
+  onClearChecked: () => void
+  weekDates: Date[]
+  weekOffset: number
+  setWeekOffset: (n: number) => void
+}) {
+  const [newItem, setNewItem] = useState('')
+  const remaining = shopping.filter((i) => !i.checked).length + manualItems.filter((i) => !i.checked).length
+  const hasItems = shopping.length > 0 || manualItems.length > 0
+  const hasChecked = shopping.some((item) => item.checked) || manualItems.some((item) => item.checked)
+
+  function submitManualItem(event: FormEvent) {
+    event.preventDefault()
+    const trimmed = newItem.trim()
+    if (!trimmed) return
+    onAddManual(trimmed)
+    setNewItem('')
+  }
+
+  return (
+    <section>
+      <div className="section-header">
+        <div><div className="eyebrow">SHOPPING</div><h2>{formatRange(weekDates)}</h2></div>
+        <div className="week-controls"><button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button><button onClick={() => setWeekOffset(0)}>Today</button><button onClick={() => setWeekOffset(weekOffset + 1)}>›</button></div>
+      </div>
+
+      <form className="shopping-add" onSubmit={submitManualItem}>
+        <input
+          type="text"
+          value={newItem}
+          onChange={(event) => setNewItem(event.target.value)}
+          placeholder="Add anything to the shopping list…"
+          aria-label="Add shopping list item"
+        />
+        <button className="primary" type="submit">Add</button>
+      </form>
+
+      {hasChecked && <div style={{ marginBottom: 14 }}><button className="secondary" onClick={onClearChecked}>Clear checks</button></div>}
+
+      {!hasItems ? (
+        <div className="empty-state"><h3>Shopping list is empty</h3><p>Add an item above or plan meals for this week.</p></div>
+      ) : (
+        <>
+          <p className="shopping-summary">{remaining} item{remaining === 1 ? '' : 's'} remaining</p>
+          <div className="shopping-list">
+            {shopping.map((item) => (
+              <label className={`shopping-item ${item.checked ? 'checked' : ''}`} key={`meal-${item.ingredientId}`}>
+                <input type="checkbox" checked={item.checked} onChange={() => onToggle(item.ingredientId)} />
+                <span className="checkmark" />
+                <span className="shopping-name">{item.name}</span>
+                <strong>{formatQuantity(item.quantity)} {item.unit}</strong>
+              </label>
+            ))}
+
+            {manualItems.map((item) => (
+              <div className={`shopping-item manual-shopping-item ${item.checked ? 'checked' : ''}`} key={`manual-${item.id}`}>
+                <input
+                  className="manual-shopping-checkbox"
+                  type="checkbox"
+                  checked={item.checked}
+                  onChange={() => onToggleManual(item.id)}
+                  aria-label={`Mark ${item.name} ${item.checked ? 'not purchased' : 'purchased'}`}
+                />
+                <span className="checkmark" onClick={() => onToggleManual(item.id)} />
+                <span className="shopping-name" onClick={() => onToggleManual(item.id)}>{item.name}</span>
+                <button
+                  className="shopping-delete"
+                  type="button"
+                  onClick={() => onDeleteManual(item.id)}
+                  aria-label={`Delete ${item.name}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
 }
 
 function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {

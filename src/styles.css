@@ -72,6 +72,15 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .card-actions button { font-size: 11px; padding: 6px 8px; }
 .danger-text { color: var(--danger) !important; }
 .shopping-summary { color: var(--muted); font-size: 13px; }
+.shopping-add { display: flex; gap: 8px; max-width: 700px; margin-bottom: 14px; }
+.shopping-add input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: white; padding: 10px 12px; outline: none; }
+.shopping-add input:focus { border-color: #a9b8aa; box-shadow: 0 0 0 2px var(--accent-soft); }
+.manual-shopping-item { cursor: default; }
+.manual-shopping-item .shopping-name, .manual-shopping-item .checkmark { cursor: pointer; }
+.manual-shopping-checkbox { position: absolute; opacity: 0; pointer-events: none; }
+.shopping-delete { grid-column: 3; border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 3px 6px; }
+.shopping-delete:hover { color: var(--danger); }
+.manual-shopping-item.checked .shopping-name { text-decoration: line-through; color: #aaa39b; }
 .shopping-list { max-width: 700px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); overflow: hidden; }
 .shopping-item { display: grid; grid-template-columns: 20px 1fr auto; gap: 12px; align-items: center; padding: 15px 17px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .shopping-item:last-child { border-bottom: 0; }
