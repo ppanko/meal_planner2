@@ -288,7 +288,7 @@ function MealCard({ meal, overlay = false }: { meal: Meal; overlay?: boolean }) 
   return <div className={`meal-card ${overlay ? 'overlay-card' : ''}`}><span>{meal.name}</span></div>
 }
 
-function PlannerSlot({ day, type, meal, onRemove }: { day: string; type: MealType; meal: Meal | null; onRemove: () => void }) {
+function PlannerSlot({ day, type, meal, onRemove }: { day: string; type: MealType; meal: Meal | null | undefined; onRemove: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: `slot-|${day}|${type}` })
   return (
     <div ref={setNodeRef} className={`planner-slot ${isOver ? 'over' : ''} ${meal ? 'filled' : ''}`}>
@@ -331,7 +331,7 @@ function MealEditorCard({ meal, ingredients, onEdit, onDelete, onAdd }: { meal: 
 }
 
 function MealForm({ meal, ingredients, onCancel, onSave, onCreateIngredient }: {
-  meal: Meal | null; ingredients: Ingredient[]; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void
+  meal: Meal | null | undefined; ingredients: Ingredient[]; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void
 }) {
   const [name, setName] = useState(meal?.name ?? '')
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
@@ -397,7 +397,7 @@ function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
     for (const type of mealTypes) {
       const mealId = state.planner[day]?.[type]
       if (!mealId) continue
-      const meal = state.meals.find((m) => m.id === mealId)
+      const meal = state.meals.find((m) => m.id === mealId) ?? null
       if (!meal) continue
       for (const item of meal.ingredients) totals.set(item.ingredientId, (totals.get(item.ingredientId) ?? 0) + item.quantity)
     }
