@@ -130,11 +130,51 @@ function App() {
     })
   }
 
+  function updatePlannerNote(day: string, rowId: string, note: string) {
+    if (!state) return
+
+    const plannerNotes = { ...state.plannerNotes }
+    const dayNotes = { ...(plannerNotes[day] ?? {}) }
+    const trimmed = note.trim()
+
+    if (trimmed) {
+      dayNotes[rowId] = trimmed
+      plannerNotes[day] = dayNotes
+    } else {
+      delete dayNotes[rowId]
+
+      if (Object.keys(dayNotes).length > 0) {
+        plannerNotes[day] = dayNotes
+      } else {
+        delete plannerNotes[day]
+      }
+    }
+
+    update({
+      ...state,
+      plannerNotes,
+    })
+  }
+
   function removeMeal(day: string, rowId: string) {
     if (!state) return
+
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
     if (planner[day]) planner[day][rowId] = null
-    update({ ...state, planner })
+
+    const plannerNotes = { ...state.plannerNotes }
+    if (plannerNotes[day]) {
+      const dayNotes = { ...plannerNotes[day] }
+      delete dayNotes[rowId]
+
+      if (Object.keys(dayNotes).length > 0) {
+        plannerNotes[day] = dayNotes
+      } else {
+        delete plannerNotes[day]
+      }
+    }
+
+    update({ ...state, planner, plannerNotes })
   }
 
   function addMeal(meal: Meal) {
@@ -196,9 +236,25 @@ function App() {
     }
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const plannerNotes = { ...state.plannerNotes }
+
     for (const date of weekDates) {
       const dayKey = dateKey(date)
-      if (planner[dayKey]) delete planner[dayKey][rowId]
+
+      if (planner[dayKey]) {
+        delete planner[dayKey][rowId]
+      }
+
+      if (plannerNotes[dayKey]) {
+        const dayNotes = { ...plannerNotes[dayKey] }
+        delete dayNotes[rowId]
+
+        if (Object.keys(dayNotes).length > 0) {
+          plannerNotes[dayKey] = dayNotes
+        } else {
+          delete plannerNotes[dayKey]
+        }
+      }
     }
 
     const nextRows = rows.filter((item) => item.id !== rowId)
@@ -214,6 +270,7 @@ function App() {
       ...state,
       planner,
       plannerRowsByWeek,
+      plannerNotes,
     })
   }
 
@@ -381,8 +438,11 @@ function App() {
     const weekKeys = getWeekDates(weekOffset).map(dateKey)
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
 
+    const plannerNotes = { ...state.plannerNotes }
+
     for (const dayKey of weekKeys) {
       delete planner[dayKey]
+      delete plannerNotes[dayKey]
     }
 
     if (!confirm(`Clear all planned meals for ${formatRange(getWeekDates(weekOffset))}?`)) {
@@ -397,6 +457,7 @@ function App() {
       ...state,
       planner,
       plannerRowsByWeek,
+      plannerNotes,
     })
   }
 
@@ -424,6 +485,7 @@ function App() {
               setWeekOffset={setWeekOffset}
               addMeal={addMeal}
               removeMeal={removeMeal}
+              updatePlannerNote={updatePlannerNote}
               addPlannerRow={addPlannerRow}
               removePlannerRow={removePlannerRow}
               proteinCategories={state.proteinCategories}
@@ -560,6 +622,7 @@ function PlannerView({
   setWeekOffset,
   addMeal,
   removeMeal,
+  updatePlannerNote,
   addPlannerRow,
   removePlannerRow,
   proteinCategories,
@@ -570,6 +633,7 @@ function PlannerView({
   setWeekOffset: (n: number) => void
   addMeal: (meal: Meal) => void
   removeMeal: (day: string, rowId: string) => void
+  updatePlannerNote: (day: string, rowId: string, note: string) => void
   addPlannerRow: (label: string) => void
   removePlannerRow: (rowId: string) => void
   proteinCategories: ProteinCategory[]
@@ -729,6 +793,8 @@ function PlannerView({
                         day={key}
                         rowId={row.id}
                         meal={meal}
+                        note={state.plannerNotes[key]?.[row.id] ?? ''}
+                        onNoteChange={(note) => updatePlannerNote(key, row.id, note)}
                         onRemove={() => removeMeal(key, row.id)}
                         ingredients={state.ingredients}
                         proteinCategories={proteinCategories}
@@ -848,6 +914,8 @@ function PlannerSlot({
   day,
   rowId,
   meal,
+  note,
+  onNoteChange,
   onRemove,
   ingredients,
   proteinCategories,
@@ -855,6 +923,8 @@ function PlannerSlot({
   day: string
   rowId: string
   meal: Meal | null | undefined
+  note: string
+  onNoteChange: (note: string) => void
   onRemove: () => void
   ingredients: Ingredient[]
   proteinCategories: ProteinCategory[]
@@ -864,6 +934,12 @@ function PlannerSlot({
   })
 
   const mealData = meal ?? null
+  const [editingNote, setEditingNote] = useState(false)
+  const [draftNote, setDraftNote] = useState(note)
+
+  useEffect(() => {
+    setDraftNote(note)
+  }, [note])
 
   return (
     <div
@@ -873,8 +949,62 @@ function PlannerSlot({
     >
       {mealData ? (
         <div className="planned-meal">
-          <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
-          <span>{mealData.name}</span>
+          <div className="planned-meal-main">
+            <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
+            <span>{mealData.name}</span>
+          </div>
+
+          {note && !editingNote && (
+            <div className="planner-note-preview">{note}</div>
+          )}
+
+          {editingNote ? (
+            <div
+              className="planner-note-editor"
+              onDoubleClick={(event) => event.stopPropagation()}
+            >
+              <textarea
+                value={draftNote}
+                onChange={(event) => setDraftNote(event.target.value)}
+                placeholder="Add a note…"
+                autoFocus
+              />
+              <div className="planner-note-actions">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setDraftNote(note)
+                    setEditingNote(false)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="save-note"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onNoteChange(draftNote)
+                    setEditingNote(false)
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={`planner-note-button ${note ? 'has-note' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                setEditingNote(true)
+              }}
+            >
+              {note ? 'Edit note' : '+ Note'}
+            </button>
+          )}
         </div>
       ) : (
         <span className="empty-slot">Drop meal here</span>

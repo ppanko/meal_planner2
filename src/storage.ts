@@ -96,6 +96,7 @@ function normalizeState(state: Partial<AppState>): AppState {
     proteinCategories,
     plannerRowsByWeek: state.plannerRowsByWeek ?? {},
     shoppingHistory: state.shoppingHistory ?? [],
+    plannerNotes: state.plannerNotes ?? {},
   }
 }
 

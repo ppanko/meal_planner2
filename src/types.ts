@@ -62,4 +62,5 @@ export type AppState = {
   proteinCategories: ProteinCategory[]
   plannerRowsByWeek: Record<string, PlannerRow[]>
   shoppingHistory: ShoppingHistoryItem[]
+  plannerNotes: Record<string, Record<string, string>>
 }
