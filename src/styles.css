@@ -159,3 +159,194 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 
 .protein-dot-group { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
 .ingredient-protein-indicator { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+
+.planner-row-label { justify-content: space-between; gap: 6px; }
+.planner-row-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.remove-planner-row { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 3px; }
+.remove-planner-row:hover { color: var(--danger); }
+.planner-add-row { grid-column: 1 / -1; display: flex; gap: 7px; padding: 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #faf8f4; }
+.planner-add-row input { width: min(260px, 60%); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; background: #fff; }
+.planner-add-row button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: var(--panel); color: #4f4a43; font-weight: 700; }
+
+/* Custom planner rows */
+.first-custom-row .planner-row-label,
+.first-custom-row .planner-slot {
+  border-top: 3px solid var(--line);
+}
+
+.planner-add-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 7px;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #faf8f4;
+}
+
+.planner-add-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: #fff;
+}
+
+.planner-add-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: var(--panel);
+  color: #4f4a43;
+  font-weight: 700;
+}
+
+@media (max-width: 500px) {
+  .planner-add-row {
+    gap: 5px;
+    padding: 8px;
+  }
+
+  .planner-add-row input {
+    font-size: 11px;
+  }
+
+  .planner-add-row button {
+    font-size: 11px;
+    padding: 7px 8px;
+  }
+}
+
+/* Ergonomic custom-row control */
+.planner-add-row {
+  grid-column: 1 / -1;
+  padding: 10px;
+  background: #faf8f4;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.add-row-trigger {
+  width: 100%;
+  border: 1px dashed #c9c3ba;
+  border-radius: 9px;
+  background: transparent;
+  color: #59534c;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.add-row-trigger:hover {
+  border-color: #a9b8aa;
+  background: #fffdf9;
+}
+
+.add-row-icon {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 25px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.add-row-trigger > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.add-row-trigger strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.add-row-trigger small,
+.add-row-editor-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.add-row-editor {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.add-row-editor-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+.add-row-editor-copy strong {
+  font-size: 11px;
+}
+
+.add-row-editor input {
+  flex: 0 1 180px;
+  width: 180px;
+  min-width: 100px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: white;
+  outline: none;
+}
+
+.add-row-editor input:focus {
+  border-color: #a9b8aa;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.add-row-editor-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.add-row-editor-actions button {
+  padding: 7px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (max-width: 650px) {
+  .add-row-editor {
+    flex-wrap: wrap;
+  }
+
+  .add-row-editor-copy {
+    flex: 1 1 100%;
+  }
+
+  .add-row-editor input {
+    flex: 1 1 140px;
+    width: auto;
+  }
+
+  .add-row-editor-actions {
+    margin-left: 0;
+  }
+}

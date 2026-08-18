@@ -26,7 +26,12 @@ export type Meal = {
   ingredients: MealIngredient[]
 }
 
-export type Planner = Record<string, Record<MealType, string | null>>
+export type Planner = Record<string, Record<string, string | null>>
+
+export type PlannerRow = {
+  id: string
+  label: string
+}
 
 export type ManualShoppingItem = {
   id: string
@@ -49,4 +54,5 @@ export type AppState = {
   shoppingChecked: Record<string, boolean>
   manualShoppingItems: Record<string, ManualShoppingItem[]>
   proteinCategories: ProteinCategory[]
+  plannerRowsByWeek: Record<string, PlannerRow[]>
 }

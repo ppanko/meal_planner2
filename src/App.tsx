@@ -12,12 +12,20 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
-import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, ProteinCategory, ShoppingItem } from './types'
+import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, PlannerRow, ProteinCategory, ShoppingItem } from './types'
 import { mealTypes } from './data'
 import { loadState, saveState } from './storage'
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 const dayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+const defaultPlannerRows: PlannerRow[] = mealTypes.map((type) => ({ id: type, label: type }))
+
+function getPlannerRows(state: AppState, weekDates: Date[]): PlannerRow[] {
+  const weekKey = dateKey(weekDates[0])
+  return [...defaultPlannerRows, ...(state.plannerRowsByWeek[weekKey] ?? [])]
+}
+
 
 function App() {
   const [state, setState] = useState<AppState | null>(null)
@@ -70,64 +78,114 @@ function App() {
       return
     }
 
-    const [, day, type] = targetId.split(':')
+    const [, day, rowId] = targetId.split(':')
 
-    if (!day || !type || !mealTypes.includes(type as MealType)) {
+    if (!day || !rowId) {
       return
     }
 
     const meal = state.meals.find((m) => m.id === mealId)
+    if (!meal) return
 
-    if (!meal) {
-      return
-    }
+    const weekDatesForDay = getWeekDatesForDateKey(day)
+    const validRowIds = new Set(getPlannerRows(state, weekDatesForDay).map((row) => row.id))
+    if (!validRowIds.has(rowId)) return
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    planner[day] ??= {}
+    planner[day][rowId] = meal.id
 
-    if (!planner[day]) {
-      planner[day] = {
-        Breakfast: null,
-        Lunch: null,
-        Dinner: null,
-      }
-    }
-
-    planner[day][type as MealType] = meal.id
-
-    const nextState: AppState = {
-      meals: state.meals,
-      ingredients: state.ingredients,
+    update({
+      ...state,
       planner,
-      shoppingChecked: state.shoppingChecked,
-      manualShoppingItems: state.manualShoppingItems,
-      proteinCategories: state.proteinCategories,
-    }
-
-    update(nextState)
+    })
   }
 
-  function removeMeal(day: string, type: MealType) {
+  function removeMeal(day: string, rowId: string) {
     if (!state) return
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
-    if (planner[day]) planner[day][type] = null
+    if (planner[day]) planner[day][rowId] = null
     update({ ...state, planner })
   }
 
   function addMeal(meal: Meal) {
     if (!state) return
+
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
-    const currentWeekKeys = getWeekDates(weekOffset).map(dateKey)
+    const currentWeekDates = getWeekDates(weekOffset)
+    const currentWeekKeys = currentWeekDates.map(dateKey)
+    const rows = getPlannerRows(state, currentWeekDates)
+
     for (const dayKey of currentWeekKeys) {
-      planner[dayKey] ??= { Breakfast: null, Lunch: null, Dinner: null }
-      for (const type of mealTypes) {
-        if (!planner[dayKey][type]) {
-          planner[dayKey][type] = meal.id
+      planner[dayKey] ??= {}
+
+      for (const row of rows) {
+        if (!planner[dayKey][row.id]) {
+          planner[dayKey][row.id] = meal.id
           update({ ...state, planner })
           setView('planner')
           return
         }
       }
     }
+  }
+
+  function addPlannerRow(label: string) {
+    if (!state) return
+
+    const weekKey = dateKey(getWeekDates(weekOffset)[0])
+    const rows = state.plannerRowsByWeek[weekKey] ?? []
+    const trimmed = label.trim()
+    const unnamedCount = rows.filter((row) => row.label.startsWith('Extra meal')).length
+
+    const row: PlannerRow = {
+      id: `custom-${crypto.randomUUID()}`,
+      label: trimmed || `Extra meal${unnamedCount ? ` ${unnamedCount + 1}` : ''}`,
+    }
+
+    update({
+      ...state,
+      plannerRowsByWeek: {
+        ...state.plannerRowsByWeek,
+        [weekKey]: [...rows, row],
+      },
+    })
+  }
+
+  function removePlannerRow(rowId: string) {
+    if (!state) return
+
+    const weekDates = getWeekDates(weekOffset)
+    const weekKey = dateKey(weekDates[0])
+    const rows = state.plannerRowsByWeek[weekKey] ?? []
+    const row = rows.find((item) => item.id === rowId)
+    if (!row) return
+
+    const hasMeals = weekDates.some((date) => Boolean(state.planner[dateKey(date)]?.[rowId]))
+    if (hasMeals && !confirm(`Remove "${row.label}" and its planned meals from this week?`)) {
+      return
+    }
+
+    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    for (const date of weekDates) {
+      const dayKey = dateKey(date)
+      if (planner[dayKey]) delete planner[dayKey][rowId]
+    }
+
+    const nextRows = rows.filter((item) => item.id !== rowId)
+    const plannerRowsByWeek = { ...state.plannerRowsByWeek }
+
+    if (nextRows.length > 0) {
+      plannerRowsByWeek[weekKey] = nextRows
+    } else {
+      delete plannerRowsByWeek[weekKey]
+    }
+
+    update({
+      ...state,
+      planner,
+      plannerRowsByWeek,
+    })
   }
 
   function saveMeal(meal: Meal, oldId?: string) {
@@ -233,13 +291,14 @@ function App() {
       return
     }
 
+    const weekKey = dateKey(getWeekDates(weekOffset)[0])
+    const plannerRowsByWeek = { ...state.plannerRowsByWeek }
+    delete plannerRowsByWeek[weekKey]
+
     update({
-      meals: state.meals,
-      ingredients: state.ingredients,
+      ...state,
       planner,
-      shoppingChecked: state.shoppingChecked,
-      manualShoppingItems: state.manualShoppingItems,
-      proteinCategories: state.proteinCategories,
+      plannerRowsByWeek,
     })
   }
 
@@ -267,6 +326,8 @@ function App() {
               setWeekOffset={setWeekOffset}
               addMeal={addMeal}
               removeMeal={removeMeal}
+              addPlannerRow={addPlannerRow}
+              removePlannerRow={removePlannerRow}
               proteinCategories={state.proteinCategories}
             />
           )}
@@ -397,6 +458,8 @@ function PlannerView({
   setWeekOffset,
   addMeal,
   removeMeal,
+  addPlannerRow,
+  removePlannerRow,
   proteinCategories,
 }: {
   state: AppState
@@ -404,12 +467,16 @@ function PlannerView({
   weekOffset: number
   setWeekOffset: (n: number) => void
   addMeal: (meal: Meal) => void
-  removeMeal: (day: string, type: MealType) => void
+  removeMeal: (day: string, rowId: string) => void
+  addPlannerRow: (label: string) => void
+  removePlannerRow: (rowId: string) => void
   proteinCategories: ProteinCategory[]
 }) {
   const [mealSearch, setMealSearch] = useState('')
   const [proteinFilter, setProteinFilter] = useState<string | 'All'>('All')
   const [showMealBrowser, setShowMealBrowser] = useState(false)
+  const [newRowLabel, setNewRowLabel] = useState('')
+  const [showRowEditor, setShowRowEditor] = useState(false)
 
   const filteredMeals = useMemo(() => {
     const query = mealSearch.trim().toLowerCase()
@@ -525,28 +592,118 @@ function PlannerView({
               </div>
             ))}
 
-            {mealTypes.map((type) => (
-              <div className="planner-row" key={type}>
-                <div className="meal-type-label">{type}</div>
-                {weekDates.map((date) => {
-                  const key = dateKey(date)
-                  const mealId = state.planner[key]?.[type] ?? null
-                  const meal = mealId ? state.meals.find((m) => m.id === mealId) : null
+            {getPlannerRows(state, weekDates).map((row, rowIndex) => {
+              const isCustom = row.id.startsWith('custom-')
+              const firstCustomIndex = defaultPlannerRows.length
 
-                  return (
-                    <PlannerSlot
-                      key={key}
-                      day={key}
-                      type={type}
-                      meal={meal}
-                      onRemove={() => removeMeal(key, type)}
-                      ingredients={state.ingredients}
-                      proteinCategories={proteinCategories}
-                    />
-                  )
-                })}
-              </div>
-            ))}
+              return (
+                <div
+                  className={`planner-row ${isCustom && rowIndex === firstCustomIndex ? 'first-custom-row' : ''}`}
+                  key={row.id}
+                >
+                  <div className="meal-type-label planner-row-label">
+                    <span>{row.label}</span>
+                    {isCustom && (
+                      <button
+                        type="button"
+                        className="remove-planner-row"
+                        onClick={() => removePlannerRow(row.id)}
+                        aria-label={`Remove ${row.label} row`}
+                        title="Remove row"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {weekDates.map((date) => {
+                    const key = dateKey(date)
+                    const mealId = state.planner[key]?.[row.id] ?? null
+                    const meal = mealId ? state.meals.find((m) => m.id === mealId) : null
+
+                    return (
+                      <PlannerSlot
+                        key={`${key}-${row.id}`}
+                        day={key}
+                        rowId={row.id}
+                        meal={meal}
+                        onRemove={() => removeMeal(key, row.id)}
+                        ingredients={state.ingredients}
+                        proteinCategories={proteinCategories}
+                      />
+                    )
+                  })}
+                </div>
+              )
+            })}
+
+            <div className={`planner-add-row ${showRowEditor ? 'editing' : ''}`}>
+              {!showRowEditor ? (
+                <button
+                  type="button"
+                  className="add-row-trigger"
+                  onClick={() => setShowRowEditor(true)}
+                >
+                  <span className="add-row-icon">+</span>
+                  <span>
+                    <strong>Add custom row</strong>
+                    <small>For guests, kids, dietary needs, or another meal</small>
+                  </span>
+                </button>
+              ) : (
+                <div className="add-row-editor">
+                  <div className="add-row-editor-copy">
+                    <strong>New planner row</strong>
+                    <small>Name is optional</small>
+                  </div>
+
+                  <input
+                    value={newRowLabel}
+                    onChange={(event) => setNewRowLabel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        addPlannerRow(newRowLabel)
+                        setNewRowLabel('')
+                        setShowRowEditor(false)
+                      }
+
+                      if (event.key === 'Escape') {
+                        setNewRowLabel('')
+                        setShowRowEditor(false)
+                      }
+                    }}
+                    placeholder="e.g. Guests"
+                    aria-label="Optional new planner row name"
+                    autoFocus
+                  />
+
+                  <div className="add-row-editor-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setNewRowLabel('')
+                        setShowRowEditor(false)
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => {
+                        addPlannerRow(newRowLabel)
+                        setNewRowLabel('')
+                        setShowRowEditor(false)
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -587,21 +744,21 @@ function MealCard({ meal, overlay = false, ingredients, proteinCategories }: { m
 
 function PlannerSlot({
   day,
-  type,
+  rowId,
   meal,
   onRemove,
   ingredients,
   proteinCategories,
 }: {
   day: string
-  type: MealType
+  rowId: string
   meal: Meal | null | undefined
   onRemove: () => void
   ingredients: Ingredient[]
   proteinCategories: ProteinCategory[]
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `slot:${day}:${type}`,
+    id: `slot:${day}:${rowId}`,
   })
 
   const mealData = meal ?? null
@@ -893,20 +1050,53 @@ function ShoppingView({
 
 function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
   const totals = new Map<string, number>()
+
   for (const day of weekDates.map(dateKey)) {
-    for (const type of mealTypes) {
-      const mealId = state.planner[day]?.[type]
+    const dayPlan = state.planner[day] ?? {}
+
+    for (const mealId of Object.values(dayPlan)) {
       if (!mealId) continue
+
       const meal = state.meals.find((m) => m.id === mealId) ?? null
       if (!meal) continue
-      for (const item of meal.ingredients) totals.set(item.ingredientId, (totals.get(item.ingredientId) ?? 0) + item.quantity)
+
+      for (const item of meal.ingredients) {
+        totals.set(
+          item.ingredientId,
+          (totals.get(item.ingredientId) ?? 0) + item.quantity,
+        )
+      }
     }
   }
-  return [...totals.entries()].map(([ingredientId, quantity]) => {
-    const ingredient = state.ingredients.find((i) => i.id === ingredientId)
-    if (!ingredient) return null
-    return { ingredientId, name: ingredient.name, unit: ingredient.unit, quantity, checked: !!state.shoppingChecked[ingredientId] }
-  }).filter((x): x is ShoppingItem => x !== null).sort((a, b) => a.name.localeCompare(b.name))
+
+  return [...totals.entries()]
+    .map(([ingredientId, quantity]) => {
+      const ingredient = state.ingredients.find((i) => i.id === ingredientId)
+      if (!ingredient) return null
+
+      return {
+        ingredientId,
+        name: ingredient.name,
+        unit: ingredient.unit,
+        quantity,
+        checked: !!state.shoppingChecked[ingredientId],
+      }
+    })
+    .filter((x): x is ShoppingItem => x !== null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function getWeekDatesForDateKey(key: string): Date[] {
+  const date = new Date(`${key}T12:00:00`)
+  const monday = new Date(date)
+  const day = monday.getDay() || 7
+  monday.setDate(monday.getDate() - day + 1)
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
 }
 
 function dateKey(date: Date) {
