@@ -1,5 +1,5 @@
-import type { AppState } from './types'
-import { seedState } from './data'
+import type { AppState, Ingredient, Meal } from './types'
+import { seedProteinCategories, seedState } from './data'
 
 const DB_NAME = 'meal-planner-db'
 const DB_VERSION = 1
@@ -14,12 +14,86 @@ function cloneSeed(): AppState {
 
 function normalizeState(state: Partial<AppState>): AppState {
   const seed = cloneSeed()
+
+  const proteinCategories =
+    state.proteinCategories && state.proteinCategories.length > 0
+      ? state.proteinCategories
+      : seedProteinCategories
+
+  const categoryIds = new Set(proteinCategories.map((category) => category.id))
+
+  const legacyIngredientProteinById: Record<string, string | null> = {
+    chicken: 'chicken',
+    'ground-beef': 'beef',
+  }
+
+  const ingredients = (state.ingredients ?? seed.ingredients).map((ingredient) => {
+    const legacyIngredient = ingredient as Ingredient & { proteinCategoryId?: string | null }
+    const requestedId =
+      legacyIngredient.proteinCategoryId ??
+      legacyIngredientProteinById[ingredient.id] ??
+      null
+
+    return {
+      ...ingredient,
+      proteinCategoryId:
+        requestedId && categoryIds.has(requestedId) ? requestedId : null,
+    }
+  })
+
+  const legacyProteinToId: Record<string, string> = {
+    Chicken: 'chicken',
+    Beef: 'beef',
+    Seafood: 'seafood',
+    Pork: 'pork',
+    None: 'none',
+    Lamb: 'lamb',
+  }
+
+  const ingredientProteinById = new Map(
+    ingredients.map((ingredient) => [ingredient.id, ingredient.proteinCategoryId]),
+  )
+
+  const meals = (state.meals ?? seed.meals).map((meal) => {
+    const legacyMeal = meal as Meal & {
+      protein?: string
+      proteinCategoryId?: string
+      proteinCategoryOverrideId?: string | null
+    }
+
+    const explicitOverride =
+      legacyMeal.proteinCategoryOverrideId ??
+      legacyMeal.proteinCategoryId ??
+      (legacyMeal.protein ? legacyProteinToId[legacyMeal.protein] : undefined)
+
+    const derivedProteinIds = new Set(
+      meal.ingredients
+        .map((item) => ingredientProteinById.get(item.ingredientId))
+        .filter((id): id is string => Boolean(id)),
+    )
+
+    // Older versions wrote "none" directly onto meals. In the ingredient-driven
+    // model, that stale value must not suppress a real protein ingredient.
+    const migratedOverride =
+      explicitOverride === 'none' && derivedProteinIds.size > 0
+        ? null
+        : explicitOverride && categoryIds.has(explicitOverride)
+          ? explicitOverride
+          : null
+
+    return {
+      ...meal,
+      proteinCategoryOverrideId: migratedOverride,
+    }
+  })
+
   return {
-    ingredients: state.ingredients ?? seed.ingredients,
-    meals: state.meals ?? seed.meals,
+    ingredients,
+    meals,
     planner: state.planner ?? {},
     shoppingChecked: state.shoppingChecked ?? {},
     manualShoppingItems: state.manualShoppingItems ?? {},
+    proteinCategories,
   }
 }
 

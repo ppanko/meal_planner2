@@ -42,6 +42,16 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .meal-browser-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 3px; scrollbar-gutter: stable; }
 .meal-browser-empty { padding: 18px 8px; color: var(--muted); font-size: 12px; text-align: center; }
 .meal-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.protein-dot { display: inline-block; flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; }
+.protein-filter { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 10px; }
+.protein-filter button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); padding: 4px 7px; font-size: 10px; }
+.protein-filter button.active { border-color: var(--accent); color: #2f4936; background: var(--accent-soft); }
+.protein-guide { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 4px 0 12px; color: var(--muted); font-size: 10px; }
+.protein-guide span { display: inline-flex; align-items: center; gap: 5px; }
+.new-protein-category { display: grid; grid-template-columns: 1fr 44px auto; gap: 6px; margin: 4px 0 12px; align-items: center; }
+.new-protein-category input { margin: 0; }
+.new-protein-category button { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 8px 10px; white-space: nowrap; }
+.protein-color-picker { width: 44px !important; height: 38px; padding: 3px !important; cursor: pointer; }
 .mobile-meal-browser-toggle { display: none; width: 100%; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: #4f4a43; padding: 10px 12px; margin-bottom: 12px; align-items: center; justify-content: space-between; font-weight: 700; }
 .mobile-meal-browser-toggle span { color: var(--muted); font-size: 11px; font-weight: 600; }
 .meal-card { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; padding: 7px 9px; margin: 0 0 5px; text-align: left; color: #2d2a25; touch-action: none; min-height: 34px; }
@@ -60,7 +70,7 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .planner-slot { min-height: 105px; padding: 7px; background: #fffdf9; }
 .planner-slot.over { background: var(--accent-soft); }
 .slot-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 90px; color: #b1aba3; font-size: 11px; opacity: .55; }
-.planned-meal { width: 100%; min-height: 66px; border: 1px solid #b9cbbd; background: var(--accent-soft); border-radius: 9px; padding: 9px; text-align: left; color: #2f4936; font-weight: 700; font-size: 12px; }
+.planned-meal { width: 100%; min-height: 66px; border: 1px solid #b9cbbd; background: var(--accent-soft); border-radius: 9px; padding: 9px; text-align: left; color: #2f4936; font-weight: 700; font-size: 12px; display: flex; align-items: flex-start; gap: 6px; }
 .meal-library-full { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .meal-library-section h3 { font-size: 14px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .meal-detail-card { border: 1px solid var(--line); border-radius: 10px; padding: 13px; margin: 9px 0; background: #fff; }
@@ -113,11 +123,11 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .modal label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin: 12px 0; }
 .modal input, .modal select { width: 100%; margin-top: 5px; border: 1px solid var(--line); background: white; border-radius: 8px; padding: 10px; outline: none; }
 .editor-label { font-size: 11px; font-weight: 800; color: var(--muted); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .08em; }
-.ingredient-row { display: grid; grid-template-columns: 1fr 80px 55px 30px; gap: 6px; align-items: center; margin: 7px 0; }
+.ingredient-row { display: grid; grid-template-columns: minmax(150px, 1fr) 80px 55px 90px 30px; gap: 6px; align-items: center; margin: 7px 0; }
 .ingredient-row input, .ingredient-row select { margin: 0; }
 .ingredient-row span { color: var(--muted); font-size: 11px; }
 .ingredient-row button { border: 0; background: transparent; color: var(--danger); font-size: 20px; }
-.new-ingredient { display: flex; gap: 6px; margin-top: 10px; }
+.new-ingredient { display: grid; grid-template-columns: 1fr 140px auto; gap: 6px; margin-top: 10px; }
 .new-ingredient input { margin: 0; }
 .new-ingredient button { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 8px 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
@@ -139,8 +149,13 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .planner-slot { min-height: 88px; }
   .slot-placeholder { min-height: 72px; }
   .planned-meal { min-height: 57px; font-size: 11px; }
-  .ingredient-row { grid-template-columns: 1fr 65px 45px 25px; }
+  .ingredient-row { grid-template-columns: minmax(130px, 1fr) 65px 45px 80px 25px; }
   .modal { padding: 17px; }
 }
 .loading-screen { min-height: 100vh; display: grid; place-items: center; background: var(--bg); }
 .loading-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; color: var(--muted); }
+
+.meal-detail-top h3 { display: flex; align-items: center; gap: 7px; }
+
+.protein-dot-group { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.ingredient-protein-indicator { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }

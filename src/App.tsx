@@ -12,7 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
-import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, ShoppingItem } from './types'
+import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, ProteinCategory, ShoppingItem } from './types'
 import { mealTypes } from './data'
 import { loadState, saveState } from './storage'
 
@@ -100,6 +100,7 @@ function App() {
       planner,
       shoppingChecked: state.shoppingChecked,
       manualShoppingItems: state.manualShoppingItems,
+      proteinCategories: state.proteinCategories,
     }
 
     update(nextState)
@@ -238,6 +239,7 @@ function App() {
       planner,
       shoppingChecked: state.shoppingChecked,
       manualShoppingItems: state.manualShoppingItems,
+      proteinCategories: state.proteinCategories,
     })
   }
 
@@ -265,6 +267,7 @@ function App() {
               setWeekOffset={setWeekOffset}
               addMeal={addMeal}
               removeMeal={removeMeal}
+              proteinCategories={state.proteinCategories}
             />
           )}
           {view === 'meals' && (
@@ -275,6 +278,7 @@ function App() {
               onEdit={(meal) => { setEditingMeal(meal); setShowMealForm(true) }}
               onDelete={deleteMeal}
               onAdd={addMeal}
+              proteinCategories={state.proteinCategories}
             />
           )}
           {view === 'shopping' && (
@@ -310,14 +314,79 @@ function App() {
           <MealForm
             meal={editingMeal}
             ingredients={state.ingredients}
+            proteinCategories={state.proteinCategories}
             onCancel={() => { setEditingMeal(null); setShowMealForm(false) }}
             onSave={saveMeal}
             onCreateIngredient={(ingredient) => update({ ...state, ingredients: [...state.ingredients, ingredient] })}
+            onCreateProteinCategory={(category) =>
+              update({ ...state, proteinCategories: [...state.proteinCategories, category] })
+            }
           />
         )}
       </div>
-      <DragOverlay>{activeMeal ? <MealCard meal={activeMeal} overlay /> : null}</DragOverlay>
+      <DragOverlay>{activeMeal ? <MealCard meal={activeMeal} overlay ingredients={state.ingredients} proteinCategories={state.proteinCategories} /> : null}</DragOverlay>
     </DndContext>
+  )
+}
+
+function ProteinDot({ category }: { category: ProteinCategory | undefined }) {
+  return (
+    <span
+      className="protein-dot"
+      style={{ backgroundColor: category?.color ?? '#6f8f72' }}
+      aria-label={category?.name ?? 'None'}
+      title={category?.name ?? 'None'}
+    />
+  )
+}
+
+function getMealProteinCategories(
+  meal: Meal,
+  ingredients: Ingredient[],
+  proteinCategories: ProteinCategory[],
+): ProteinCategory[] {
+  if (meal.proteinCategoryOverrideId) {
+    const override = proteinCategories.find(
+      (category) => category.id === meal.proteinCategoryOverrideId,
+    )
+    return override ? [override] : []
+  }
+
+  const ids = new Set(
+    meal.ingredients
+      .map((item) =>
+        ingredients.find((ingredient) => ingredient.id === item.ingredientId)?.proteinCategoryId,
+      )
+      .filter((id): id is string => Boolean(id)),
+  )
+
+  return [...ids]
+    .map((id) => proteinCategories.find((category) => category.id === id))
+    .filter((category): category is ProteinCategory => Boolean(category))
+}
+
+function MealProteinDots({
+  meal,
+  ingredients,
+  proteinCategories,
+}: {
+  meal: Meal
+  ingredients: Ingredient[]
+  proteinCategories: ProteinCategory[]
+}) {
+  const categories = getMealProteinCategories(meal, ingredients, proteinCategories)
+
+  if (categories.length === 0) {
+    const none = proteinCategories.find((category) => category.id === 'none')
+    return <ProteinDot category={none} />
+  }
+
+  return (
+    <span className="protein-dot-group">
+      {categories.map((category) => (
+        <ProteinDot key={category.id} category={category} />
+      ))}
+    </span>
   )
 }
 
@@ -328,6 +397,7 @@ function PlannerView({
   setWeekOffset,
   addMeal,
   removeMeal,
+  proteinCategories,
 }: {
   state: AppState
   weekDates: Date[]
@@ -335,8 +405,10 @@ function PlannerView({
   setWeekOffset: (n: number) => void
   addMeal: (meal: Meal) => void
   removeMeal: (day: string, type: MealType) => void
+  proteinCategories: ProteinCategory[]
 }) {
   const [mealSearch, setMealSearch] = useState('')
+  const [proteinFilter, setProteinFilter] = useState<string | 'All'>('All')
   const [showMealBrowser, setShowMealBrowser] = useState(false)
 
   const filteredMeals = useMemo(() => {
@@ -344,8 +416,14 @@ function PlannerView({
 
     return [...state.meals]
       .filter((meal) => !query || meal.name.toLowerCase().includes(query))
+      .filter((meal) => {
+        if (proteinFilter === 'All') return true
+        const categories = getMealProteinCategories(meal, state.ingredients, proteinCategories)
+        if (categories.length === 0) return proteinFilter === 'none'
+        return categories.some((category) => category.id === proteinFilter)
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [state.meals, mealSearch])
+  }, [state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter])
 
   return (
     <section className="planner-page">
@@ -397,6 +475,27 @@ function PlannerView({
                 </button>
               )}
             </div>
+
+            <div className="protein-filter" aria-label="Filter meals by protein">
+              <button
+                type="button"
+                className={proteinFilter === 'All' ? 'active' : ''}
+                onClick={() => setProteinFilter('All')}
+              >
+                All
+              </button>
+              {proteinCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={proteinFilter === category.id ? 'active' : ''}
+                  onClick={() => setProteinFilter(category.id)}
+                >
+                  <ProteinDot category={category} />
+                  {category.name}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="meal-browser-list">
@@ -406,6 +505,8 @@ function PlannerView({
                   key={meal.id}
                   meal={meal}
                   onTap={() => addMeal(meal)}
+                  ingredients={state.ingredients}
+                  proteinCategories={proteinCategories}
                 />
               ))
             ) : (
@@ -439,6 +540,8 @@ function PlannerView({
                       type={type}
                       meal={meal}
                       onRemove={() => removeMeal(key, type)}
+                      ingredients={state.ingredients}
+                      proteinCategories={proteinCategories}
                     />
                   )
                 })}
@@ -451,7 +554,7 @@ function PlannerView({
   )
 }
 
-function DraggableMeal({ meal, onTap }: { meal: Meal; onTap: () => void }) {
+function DraggableMeal({ meal, onTap, ingredients, proteinCategories }: { meal: Meal; onTap: () => void; ingredients: Ingredient[]; proteinCategories: ProteinCategory[] }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `meal-${meal.id}`,
   })
@@ -467,13 +570,19 @@ function DraggableMeal({ meal, onTap }: { meal: Meal; onTap: () => void }) {
       onClick={onTap}
     >
       <span className="drag-handle" aria-hidden="true">⋮⋮</span>
+      <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
       <span className="meal-card-name">{meal.name}</span>
     </button>
   )
 }
 
-function MealCard({ meal, overlay = false }: { meal: Meal; overlay?: boolean }) {
-  return <div className={`meal-card ${overlay ? 'overlay-card' : ''}`}><span>{meal.name}</span></div>
+function MealCard({ meal, overlay = false, ingredients, proteinCategories }: { meal: Meal; overlay?: boolean; ingredients: Ingredient[]; proteinCategories: ProteinCategory[] }) {
+  return (
+    <div className={`meal-card ${overlay ? 'overlay-card' : ''}`}>
+      <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
+      <span>{meal.name}</span>
+    </div>
+  )
 }
 
 function PlannerSlot({
@@ -481,11 +590,15 @@ function PlannerSlot({
   type,
   meal,
   onRemove,
+  ingredients,
+  proteinCategories,
 }: {
   day: string
   type: MealType
   meal: Meal | null | undefined
   onRemove: () => void
+  ingredients: Ingredient[]
+  proteinCategories: ProteinCategory[]
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `slot:${day}:${type}`,
@@ -501,7 +614,8 @@ function PlannerSlot({
     >
       {mealData ? (
         <div className="planned-meal">
-          {mealData.name}
+          <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
+          <span>{mealData.name}</span>
         </div>
       ) : (
         <span className="empty-slot">Drop meal here</span>
@@ -510,8 +624,8 @@ function PlannerSlot({
   )
 }
 
-function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onAdd }: {
-  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onAdd: (m: Meal) => void
+function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onAdd, proteinCategories }: {
+  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onAdd: (m: Meal) => void; proteinCategories: ProteinCategory[]
 }) {
   return (
     <section>
@@ -522,30 +636,37 @@ function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onAdd }: {
       <div className="meal-library-full">
         {mealTypes.map((type) => {
           const group = meals.filter((m) => m.type === type)
-          return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onAdd={() => onAdd(meal)} />)}</div>
+          return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onAdd={() => onAdd(meal)} />)}</div>
         })}
       </div>
     </section>
   )
 }
 
-function MealEditorCard({ meal, ingredients, onEdit, onDelete, onAdd }: { meal: Meal; ingredients: Ingredient[]; onEdit: () => void; onDelete: () => void; onAdd: () => void }) {
+function MealEditorCard({ meal, ingredients, proteinCategories, onEdit, onDelete, onAdd }: { meal: Meal; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onEdit: () => void; onDelete: () => void; onAdd: () => void }) {
   return (
     <article className="meal-detail-card">
-      <div className="meal-detail-top"><h3>{meal.name}</h3><span className="pill">{meal.type}</span></div>
+      <div className="meal-detail-top">
+        <h3><MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />{meal.name}</h3>
+        <span className="pill">{meal.type}</span>
+      </div>
       <ul>{meal.ingredients.map((mi) => { const ing = ingredients.find((i) => i.id === mi.ingredientId); return ing ? <li key={mi.ingredientId}>{formatQuantity(mi.quantity)} {ing.unit} {ing.name}</li> : null })}</ul>
       <div className="card-actions"><button onClick={onAdd}>Add to planner</button><button onClick={onEdit}>Edit</button><button className="danger-text" onClick={onDelete}>Delete</button></div>
     </article>
   )
 }
 
-function MealForm({ meal, ingredients, onCancel, onSave, onCreateIngredient }: {
-  meal: Meal | null | undefined; ingredients: Ingredient[]; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void
+function MealForm({ meal, ingredients, proteinCategories, onCancel, onSave, onCreateIngredient, onCreateProteinCategory }: {
+  meal: Meal | null | undefined; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void; onCreateProteinCategory: (category: ProteinCategory) => void
 }) {
   const [name, setName] = useState(meal?.name ?? '')
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
+  const [proteinCategoryOverrideId, setProteinCategoryOverrideId] = useState(meal?.proteinCategoryOverrideId ?? '')
+  const [newProteinCategory, setNewProteinCategory] = useState('')
+  const [newProteinColor, setNewProteinColor] = useState('#8a7f70')
   const [rows, setRows] = useState(meal?.ingredients ?? [])
   const [newIngredient, setNewIngredient] = useState('')
+  const [newIngredientProteinCategoryId, setNewIngredientProteinCategoryId] = useState('')
 
   function addRow() {
     const first = ingredients[0]
@@ -555,14 +676,15 @@ function MealForm({ meal, ingredients, onCancel, onSave, onCreateIngredient }: {
     const trimmed = newIngredient.trim()
     if (!trimmed) return
     const id = slug(trimmed)
-    const ingredient = { id, name: trimmed, unit: 'each' }
+    const ingredient: Ingredient = { id, name: trimmed, unit: 'each', proteinCategoryId: newIngredientProteinCategoryId || null }
     onCreateIngredient(ingredient)
     setRows([...rows, { ingredientId: id, quantity: 1 }])
     setNewIngredient('')
+    setNewIngredientProteinCategoryId('')
   }
   function save() {
     if (!name.trim() || rows.length === 0) return
-    onSave({ id: meal?.id ?? crypto.randomUUID(), name: name.trim(), type, ingredients: rows }, meal?.id)
+    onSave({ id: meal?.id ?? crypto.randomUUID(), name: name.trim(), type, proteinCategoryOverrideId: proteinCategoryOverrideId || null, ingredients: rows }, meal?.id)
   }
 
   return (
@@ -570,15 +692,100 @@ function MealForm({ meal, ingredients, onCancel, onSave, onCreateIngredient }: {
       <div className="modal-header"><h2>{meal ? 'Edit meal' : 'New meal'}</h2><button onClick={onCancel}>×</button></div>
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken tacos" autoFocus /></label>
       <label>Type<select value={type} onChange={(e) => setType(e.target.value as MealType)}>{mealTypes.map((t) => <option key={t}>{t}</option>)}</select></label>
+      <label>
+        Protein
+        <select
+          value={proteinCategoryOverrideId}
+          onChange={(e) => setProteinCategoryOverrideId(e.target.value)}
+        >
+          <option value="">Auto from ingredients</option>
+          {proteinCategories.map((category) => (
+            <option key={category.id} value={category.id}>{category.name}</option>
+          ))}
+        </select>
+      </label>
+      <div className="protein-guide">
+        {proteinCategories.map((category) => (
+          <span key={category.id}><ProteinDot category={category} />{category.name}</span>
+        ))}
+      </div>
+      <div className="new-protein-category">
+        <input
+          value={newProteinCategory}
+          onChange={(e) => setNewProteinCategory(e.target.value)}
+          placeholder="New protein category"
+        />
+        <input
+          className="protein-color-picker"
+          type="color"
+          value={newProteinColor}
+          onChange={(e) => setNewProteinColor(e.target.value)}
+          aria-label="Protein category color"
+          title="Choose category color"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const categoryName = newProteinCategory.trim()
+            if (!categoryName) return
+
+            const id = slug(categoryName)
+            const existing = proteinCategories.find((category) => category.id === id)
+            if (existing) {
+              setProteinCategoryOverrideId(existing.id)
+              setNewProteinCategory('')
+              return
+            }
+
+            const category: ProteinCategory = {
+              id,
+              name: categoryName,
+              color: newProteinColor,
+            }
+
+            onCreateProteinCategory(category)
+            setProteinCategoryOverrideId(id)
+            setNewProteinCategory('')
+          }}
+        >
+          Add category
+        </button>
+      </div>
       <div className="ingredients-editor"><div className="editor-label">Ingredients</div>
         {rows.map((row, index) => <div className="ingredient-row" key={`${row.ingredientId}-${index}`}>
           <select value={row.ingredientId} onChange={(e) => setRows(rows.map((r, i) => i === index ? { ...r, ingredientId: e.target.value } : r))}>{ingredients.map((i) => <option value={i.id} key={i.id}>{i.name}</option>)}</select>
           <input type="number" min="0" step="0.25" value={row.quantity} onChange={(e) => setRows(rows.map((r, i) => i === index ? { ...r, quantity: Number(e.target.value) } : r))} />
           <span>{ingredients.find((i) => i.id === row.ingredientId)?.unit ?? ''}</span>
+          <span className="ingredient-protein-indicator">
+            {(() => {
+              const ingredient = ingredients.find((i) => i.id === row.ingredientId)
+              const category = proteinCategories.find((c) => c.id === ingredient?.proteinCategoryId)
+              return category ? <><ProteinDot category={category} />{category.name}</> : '—'
+            })()}
+          </span>
           <button onClick={() => setRows(rows.filter((_, i) => i !== index))}>×</button>
         </div>)}
         <button className="secondary" onClick={addRow}>+ Add ingredient</button>
-        <div className="new-ingredient"><input value={newIngredient} onChange={(e) => setNewIngredient(e.target.value)} placeholder="New ingredient" /><button onClick={addNewIngredient}>Create</button></div>
+        <div className="new-ingredient">
+          <input
+            value={newIngredient}
+            onChange={(e) => setNewIngredient(e.target.value)}
+            placeholder="New ingredient"
+          />
+          <select
+            value={newIngredientProteinCategoryId}
+            onChange={(e) => setNewIngredientProteinCategoryId(e.target.value)}
+            aria-label="New ingredient protein category"
+          >
+            <option value="">No protein</option>
+            {proteinCategories
+              .filter((category) => category.id !== 'none')
+              .map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+          </select>
+          <button onClick={addNewIngredient}>Create</button>
+        </div>
       </div>
       <div className="modal-actions"><button className="secondary" onClick={onCancel}>Cancel</button><button className="primary" onClick={save}>Save meal</button></div>
     </div></div>

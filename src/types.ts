@@ -1,9 +1,16 @@
 export type MealType = 'Breakfast' | 'Lunch' | 'Dinner'
 
+export type ProteinCategory = {
+  id: string
+  name: string
+  color: string
+}
+
 export type Ingredient = {
   id: string
   name: string
   unit: string
+  proteinCategoryId: string | null
 }
 
 export type MealIngredient = {
@@ -15,6 +22,7 @@ export type Meal = {
   id: string
   name: string
   type: MealType
+  proteinCategoryOverrideId: string | null
   ingredients: MealIngredient[]
 }
 
@@ -40,4 +48,5 @@ export type AppState = {
   planner: Planner
   shoppingChecked: Record<string, boolean>
   manualShoppingItems: Record<string, ManualShoppingItem[]>
+  proteinCategories: ProteinCategory[]
 }
