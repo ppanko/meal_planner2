@@ -1,4 +1,4 @@
-const CACHE = 'meal-planner-v1'
+const CACHE = 'meal-planner-v2'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.add('./')).then(() => self.skipWaiting()))
