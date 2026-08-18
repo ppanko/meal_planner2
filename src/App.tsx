@@ -55,6 +55,10 @@ function upsertShoppingHistory(
   ]
 }
 
+function getSlotMealIds(planner: Planner, day: string, rowId: string): string[] {
+  return planner[day]?.[rowId] ?? []
+}
+
 function App() {
   const [state, setState] = useState<AppState | null>(null)
   const [storageReady, setStorageReady] = useState(false)
@@ -122,7 +126,11 @@ function App() {
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
     planner[day] ??= {}
-    planner[day][rowId] = meal.id
+
+    const current = planner[day][rowId] ?? []
+    if (current.length >= 3) return
+
+    planner[day][rowId] = [...current, meal.id]
 
     update({
       ...state,
@@ -156,14 +164,21 @@ function App() {
     })
   }
 
-  function removeMeal(day: string, rowId: string) {
+  function removeMeal(day: string, rowId: string, mealId: string) {
     if (!state) return
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
-    if (planner[day]) planner[day][rowId] = null
+    const current = planner[day]?.[rowId] ?? []
+    const next = current.filter((id) => id !== mealId)
 
+    if (planner[day]) {
+      planner[day][rowId] = next
+    }
+
+    // Keep the note if other meals remain in the slot; clear it only when the slot becomes empty.
     const plannerNotes = { ...state.plannerNotes }
-    if (plannerNotes[day]) {
+
+    if (next.length === 0 && plannerNotes[day]) {
       const dayNotes = { ...plannerNotes[day] }
       delete dayNotes[rowId]
 
@@ -189,8 +204,10 @@ function App() {
       planner[dayKey] ??= {}
 
       for (const row of rows) {
-        if (!planner[dayKey][row.id]) {
-          planner[dayKey][row.id] = meal.id
+        const current = planner[dayKey][row.id] ?? []
+
+        if (current.length < 3) {
+          planner[dayKey][row.id] = [...current, meal.id]
           update({ ...state, planner })
           setView('planner')
           return
@@ -230,7 +247,7 @@ function App() {
     const row = rows.find((item) => item.id === rowId)
     if (!row) return
 
-    const hasMeals = weekDates.some((date) => Boolean(state.planner[dateKey(date)]?.[rowId]))
+    const hasMeals = weekDates.some((date) => (state.planner[dateKey(date)]?.[rowId]?.length ?? 0) > 0)
     if (hasMeals && !confirm(`Remove "${row.label}" and its planned meals from this week?`)) {
       return
     }
@@ -302,12 +319,20 @@ function App() {
   function deleteMeal(mealId: string) {
     if (!state) return
     if (!confirm('Delete this meal? It will also be removed from the planner.')) return
+
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+
     for (const day of Object.keys(planner)) {
-      if (!planner[day]) continue
-      for (const type of mealTypes) if (planner[day][type] === mealId) planner[day][type] = null
+      for (const rowId of Object.keys(planner[day] ?? {})) {
+        planner[day][rowId] = (planner[day][rowId] ?? []).filter((id) => id !== mealId)
+      }
     }
-    update({ ...state, meals: state.meals.filter((m) => m.id !== mealId), planner })
+
+    update({
+      ...state,
+      meals: state.meals.filter((m) => m.id !== mealId),
+      planner,
+    })
   }
 
   function toggleShopping(id: string) {
@@ -632,7 +657,7 @@ function PlannerView({
   weekOffset: number
   setWeekOffset: (n: number) => void
   addMeal: (meal: Meal) => void
-  removeMeal: (day: string, rowId: string) => void
+  removeMeal: (day: string, rowId: string, mealId: string) => void
   updatePlannerNote: (day: string, rowId: string, note: string) => void
   addPlannerRow: (label: string) => void
   removePlannerRow: (rowId: string) => void
@@ -784,18 +809,20 @@ function PlannerView({
 
                   {weekDates.map((date) => {
                     const key = dateKey(date)
-                    const mealId = state.planner[key]?.[row.id] ?? null
-                    const meal = mealId ? state.meals.find((m) => m.id === mealId) : null
+                    const mealIds = getSlotMealIds(state.planner, key, row.id)
+                    const meals = mealIds
+                      .map((mealId) => state.meals.find((meal) => meal.id === mealId))
+                      .filter((meal): meal is Meal => Boolean(meal))
 
                     return (
                       <PlannerSlot
                         key={`${key}-${row.id}`}
                         day={key}
                         rowId={row.id}
-                        meal={meal}
+                        meals={meals}
                         note={state.plannerNotes[key]?.[row.id] ?? ''}
                         onNoteChange={(note) => updatePlannerNote(key, row.id, note)}
-                        onRemove={() => removeMeal(key, row.id)}
+                        onRemoveMeal={(mealId) => removeMeal(key, row.id, mealId)}
                         ingredients={state.ingredients}
                         proteinCategories={proteinCategories}
                       />
@@ -913,19 +940,19 @@ function MealCard({ meal, overlay = false, ingredients, proteinCategories }: { m
 function PlannerSlot({
   day,
   rowId,
-  meal,
+  meals,
   note,
   onNoteChange,
-  onRemove,
+  onRemoveMeal,
   ingredients,
   proteinCategories,
 }: {
   day: string
   rowId: string
-  meal: Meal | null | undefined
+  meals: Meal[]
   note: string
   onNoteChange: (note: string) => void
-  onRemove: () => void
+  onRemoveMeal: (mealId: string) => void
   ingredients: Ingredient[]
   proteinCategories: ProteinCategory[]
 }) {
@@ -933,7 +960,6 @@ function PlannerSlot({
     id: `slot:${day}:${rowId}`,
   })
 
-  const mealData = meal ?? null
   const [editingNote, setEditingNote] = useState(false)
   const [draftNote, setDraftNote] = useState(note)
 
@@ -945,14 +971,29 @@ function PlannerSlot({
     <div
       ref={setNodeRef}
       className={`planner-slot ${isOver ? 'drag-over' : ''}`}
-      onDoubleClick={mealData ? onRemove : undefined}
     >
-      {mealData ? (
-        <div className="planned-meal">
-          <div className="planned-meal-main">
-            <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
-            <span>{mealData.name}</span>
-          </div>
+      {meals.length > 0 ? (
+        <div className="planned-meal-stack">
+          {meals.map((mealData) => (
+            <div className="planned-meal" key={mealData.id}>
+              <div className="planned-meal-main">
+                <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
+                <span>{mealData.name}</span>
+                <button
+                  type="button"
+                  className="remove-slot-meal"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onRemoveMeal(mealData.id)
+                  }}
+                  aria-label={`Remove ${mealData.name} from slot`}
+                  title="Remove meal"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))}
 
           {note && !editingNote && (
             <div className="planner-note-preview">{note}</div>
@@ -1444,17 +1485,17 @@ function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
   for (const day of weekDates.map(dateKey)) {
     const dayPlan = state.planner[day] ?? {}
 
-    for (const mealId of Object.values(dayPlan)) {
-      if (!mealId) continue
+    for (const mealIds of Object.values(dayPlan)) {
+      for (const mealId of mealIds ?? []) {
+        const meal = state.meals.find((m) => m.id === mealId) ?? null
+        if (!meal) continue
 
-      const meal = state.meals.find((m) => m.id === mealId) ?? null
-      if (!meal) continue
-
-      for (const item of meal.ingredients) {
-        totals.set(
-          item.ingredientId,
-          (totals.get(item.ingredientId) ?? 0) + item.quantity,
-        )
+        for (const item of meal.ingredients) {
+          totals.set(
+            item.ingredientId,
+            (totals.get(item.ingredientId) ?? 0) + item.quantity,
+          )
+        }
       }
     }
   }

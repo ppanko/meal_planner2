@@ -26,7 +26,7 @@ export type Meal = {
   ingredients: MealIngredient[]
 }
 
-export type Planner = Record<string, Record<string, string | null>>
+export type Planner = Record<string, Record<string, string[]>>
 
 export type PlannerRow = {
   id: string

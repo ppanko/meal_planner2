@@ -54,6 +54,22 @@ function normalizeState(state: Partial<AppState>): AppState {
     ingredients.map((ingredient) => [ingredient.id, ingredient.proteinCategoryId]),
   )
 
+  const planner: AppState['planner'] = {}
+
+  for (const [day, rows] of Object.entries(state.planner ?? {})) {
+    planner[day] = {}
+
+    for (const [rowId, value] of Object.entries(rows)) {
+      if (Array.isArray(value)) {
+        planner[day][rowId] = value.filter((mealId): mealId is string => typeof mealId === 'string').slice(0, 3)
+      } else if (typeof value === 'string' && value) {
+        planner[day][rowId] = [value]
+      } else {
+        planner[day][rowId] = []
+      }
+    }
+  }
+
   const meals = (state.meals ?? seed.meals).map((meal) => {
     const legacyMeal = meal as Meal & {
       protein?: string
@@ -90,7 +106,7 @@ function normalizeState(state: Partial<AppState>): AppState {
   return {
     ingredients,
     meals,
-    planner: state.planner ?? {},
+    planner,
     shoppingChecked: state.shoppingChecked ?? {},
     manualShoppingItems: state.manualShoppingItems ?? {},
     proteinCategories,

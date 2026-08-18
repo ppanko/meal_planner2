@@ -572,3 +572,40 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   border-color: var(--accent);
   color: white;
 }
+
+/* Multiple meals per planner slot */
+.planned-meal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.planned-meal {
+  min-height: 0;
+  padding: 7px;
+}
+
+.planned-meal-main {
+  width: 100%;
+  align-items: flex-start;
+}
+
+.planned-meal-main > span:not(.protein-dot-group) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.remove-slot-meal {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #7d756d;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 1px;
+}
+
+.remove-slot-meal:hover {
+  color: var(--danger);
+}
