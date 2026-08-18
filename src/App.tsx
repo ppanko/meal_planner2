@@ -62,17 +62,50 @@ function App() {
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveMealId(null)
-    if (!state) return
-    const mealId = String(event.active.id).replace('meal-', '')
-    const target = event.over?.id ? String(event.over.id) : null
-    if (!target?.startsWith('slot-')) return
-    const [, day, type] = target.split('|')
-    if (!day || !mealTypes.includes(type as MealType)) return
+
+    if (!event.over || !state) {
+      return
+    }
+
+    const mealId = String(event.active.id).replace(/^meal-/, '')
+    const targetId = String(event.over.id)
+
+    if (!targetId.startsWith('slot:')) {
+      return
+    }
+
+    const [, day, type] = targetId.split(':')
+
+    if (!day || !type || !mealTypes.includes(type as MealType)) {
+      return
+    }
+
+    const meal = state.meals.find((m) => m.id === mealId)
+
+    if (!meal) {
+      return
+    }
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
-    planner[day] ??= { Breakfast: null, Lunch: null, Dinner: null }
-    planner[day][type as MealType] = mealId
-    update({ ...state, planner })
+
+    if (!planner[day]) {
+      planner[day] = {
+        Breakfast: null,
+        Lunch: null,
+        Dinner: null,
+      }
+    }
+
+    planner[day][type as MealType] = meal.id
+
+    const nextState: AppState = {
+      meals: state.meals,
+      ingredients: state.ingredients,
+      planner,
+      shoppingChecked: state.shoppingChecked,
+    }
+
+    update(nextState)
   }
 
   function removeMeal(day: string, type: MealType) {
@@ -288,15 +321,36 @@ function MealCard({ meal, overlay = false }: { meal: Meal; overlay?: boolean }) 
   return <div className={`meal-card ${overlay ? 'overlay-card' : ''}`}><span>{meal.name}</span></div>
 }
 
-function PlannerSlot({ day, type, meal, onRemove }: { day: string; type: MealType; meal: Meal | null | undefined; onRemove: () => void }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `slot-|${day}|${type}` })
+function PlannerSlot({
+  day,
+  type,
+  meal,
+  onRemove,
+}: {
+  day: string
+  type: MealType
+  meal: Meal | null | undefined
+  onRemove: () => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `slot:${day}:${type}`,
+  })
+
+  const mealData = meal ?? null
+
   return (
-    <div ref={setNodeRef} className={`planner-slot ${isOver ? 'over' : ''} ${meal ? 'filled' : ''}`}>
-      {meal ? (
-        <button className="planned-meal" title="Double click to remove" onDoubleClick={onRemove}>
-          {meal.name}
-        </button>
-      ) : <span className="slot-placeholder">Drop here</span>}
+    <div
+      ref={setNodeRef}
+      className={`planner-slot ${isOver ? 'drag-over' : ''}`}
+      onDoubleClick={mealData ? onRemove : undefined}
+    >
+      {mealData ? (
+        <div className="planned-meal">
+          {mealData.name}
+        </div>
+      ) : (
+        <span className="empty-slot">Drop meal here</span>
+      )}
     </div>
   )
 }
