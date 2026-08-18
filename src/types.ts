@@ -40,6 +40,7 @@ export type ManualShoppingItem = {
 }
 
 export type ShoppingItem = {
+  lineId: string
   ingredientId: string
   name: string
   unit: string
@@ -63,4 +64,5 @@ export type AppState = {
   plannerRowsByWeek: Record<string, PlannerRow[]>
   shoppingHistory: ShoppingHistoryItem[]
   plannerNotes: Record<string, Record<string, string>>
+  shoppingPurchasesByWeek: Record<string, Record<string, number>>
 }

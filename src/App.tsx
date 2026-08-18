@@ -83,9 +83,10 @@ function App() {
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
 
-  const shopping = useMemo(() => state ? buildShoppingList(state, weekDates) : [], [state, weekDates])
+  const shopping = useMemo(() => state ? buildShoppingList(state, weekDates, state.shoppingPurchasesByWeek[dateKey(weekDates[0])] ?? {}) : [], [state, weekDates])
   const shoppingWeekKey = dateKey(weekDates[0])
   const manualShopping = state?.manualShoppingItems[shoppingWeekKey] ?? []
+  const shoppingPurchases = state?.shoppingPurchasesByWeek[shoppingWeekKey] ?? {}
   const activeMeal = activeMealId && state ? state.meals.find((m) => m.id === activeMealId) ?? null : null
 
   function update(next: AppState) {
@@ -335,17 +336,34 @@ function App() {
     })
   }
 
-  function toggleShopping(id: string) {
+  function toggleShopping(lineId: string) {
     if (!state) return
 
-    const nextChecked = !state.shoppingChecked[id]
-    const ingredient = state.ingredients.find((item) => item.id === id)
+    const item = shopping.find((entry) => entry.lineId === lineId)
+    if (!item) return
+
+    const currentPurchases = state.shoppingPurchasesByWeek[shoppingWeekKey] ?? {}
+    const currentPurchased = currentPurchases[item.ingredientId] ?? 0
+    const nextPurchases = { ...currentPurchases }
+
+    if (item.checked) {
+      // Unchecking the purchased line returns the full purchased amount to outstanding.
+      delete nextPurchases[item.ingredientId]
+    } else {
+      // Checking an outstanding delta adds it to the amount already purchased.
+      nextPurchases[item.ingredientId] = currentPurchased + item.quantity
+    }
+
+    const ingredient = state.ingredients.find((entry) => entry.id === item.ingredientId)
 
     update({
       ...state,
-      shoppingChecked: { ...state.shoppingChecked, [id]: nextChecked },
+      shoppingPurchasesByWeek: {
+        ...state.shoppingPurchasesByWeek,
+        [shoppingWeekKey]: nextPurchases,
+      },
       shoppingHistory:
-        nextChecked && ingredient
+        !item.checked && ingredient
           ? upsertShoppingHistory(state.shoppingHistory, ingredient.name)
           : state.shoppingHistory,
     })
@@ -446,10 +464,14 @@ function App() {
 
   function clearCheckedShopping() {
     if (!state) return
+
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    const shoppingPurchasesByWeek = { ...state.shoppingPurchasesByWeek }
+    delete shoppingPurchasesByWeek[shoppingWeekKey]
+
     update({
       ...state,
-      shoppingChecked: {},
+      shoppingPurchasesByWeek,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: current.map((item) => ({ ...item, checked: false })),
@@ -1248,7 +1270,7 @@ function ShoppingView({
 }: {
   shopping: ShoppingItem[]
   manualItems: ManualShoppingItem[]
-  onToggle: (id: string) => void
+  onToggle: (lineId: string) => void
   onAddManual: (name: string) => void
   onToggleManual: (id: string) => void
   onDeleteManual: (id: string) => void
@@ -1275,7 +1297,8 @@ function ShoppingView({
   const combinedShoppingItems = useMemo(() => {
     const mealItems = shopping.map((item) => ({
       kind: 'meal' as const,
-      id: item.ingredientId,
+      id: item.lineId,
+      ingredientId: item.ingredientId,
       name: item.name,
       checked: item.checked,
       unit: item.unit,
@@ -1299,6 +1322,9 @@ function ShoppingView({
       return a.name.localeCompare(b.name)
     })
   }, [shopping, manualItems])
+
+  const toBuyItems = combinedShoppingItems.filter((item) => !item.checked)
+  const purchasedItems = combinedShoppingItems.filter((item) => item.checked)
 
   const filteredHistory = useMemo(() => {
     const query = historySearch.trim().toLowerCase()
@@ -1369,34 +1395,44 @@ function ShoppingView({
               </p>
 
               <div className="shopping-list">
-                {combinedShoppingItems.map((item) =>
+                <div className="shopping-group-label">
+                  <span>To buy</span>
+                  <small>{toBuyItems.length}</small>
+                </div>
+
+                {toBuyItems.map((item) =>
                   item.kind === 'meal' ? (
                     <label
-                      className={`shopping-item ${item.checked ? 'checked' : ''}`}
+                      className="shopping-item"
                       key={`meal-${item.id}`}
                     >
                       <input
                         type="checkbox"
-                        checked={item.checked}
+                        checked={false}
                         onChange={() => onToggle(item.id)}
                       />
                       <span className="checkmark" />
-                      <span className="shopping-name">{item.name}</span>
+                      <span className="shopping-name">
+                        {item.name}
+                        {item.id.startsWith('outstanding:') && (
+                          <small className="shopping-status">Additional</small>
+                        )}
+                      </span>
                       <strong>
                         {formatQuantity(item.quantity)} {item.unit}
                       </strong>
                     </label>
                   ) : (
                     <div
-                      className={`shopping-item manual-shopping-item ${item.checked ? 'checked' : ''}`}
+                      className="shopping-item manual-shopping-item"
                       key={`manual-${item.id}`}
                     >
                       <input
                         className="manual-shopping-checkbox"
                         type="checkbox"
-                        checked={item.checked}
+                        checked={false}
                         onChange={() => onToggleManual(item.id)}
-                        aria-label={`Mark ${item.name} ${item.checked ? 'not purchased' : 'purchased'}`}
+                        aria-label={`Mark ${item.name} purchased`}
                       />
                       <span className="checkmark" onClick={() => onToggleManual(item.id)} />
                       <span className="shopping-name" onClick={() => onToggleManual(item.id)}>
@@ -1412,6 +1448,63 @@ function ShoppingView({
                       </button>
                     </div>
                   ),
+                )}
+
+                {purchasedItems.length > 0 && (
+                  <>
+                    <div className="shopping-group-label purchased-group-label">
+                      <span>Purchased</span>
+                      <small>{purchasedItems.length}</small>
+                    </div>
+
+                    {purchasedItems.map((item) =>
+                      item.kind === 'meal' ? (
+                        <label
+                          className="shopping-item checked"
+                          key={`meal-${item.id}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => onToggle(item.id)}
+                          />
+                          <span className="checkmark" />
+                          <span className="shopping-name">
+                            {item.name}
+                            <small className="shopping-status">Purchased</small>
+                          </span>
+                          <strong>
+                            {formatQuantity(item.quantity)} {item.unit}
+                          </strong>
+                        </label>
+                      ) : (
+                        <div
+                          className="shopping-item manual-shopping-item checked"
+                          key={`manual-${item.id}`}
+                        >
+                          <input
+                            className="manual-shopping-checkbox"
+                            type="checkbox"
+                            checked
+                            onChange={() => onToggleManual(item.id)}
+                            aria-label={`Mark ${item.name} not purchased`}
+                          />
+                          <span className="checkmark" onClick={() => onToggleManual(item.id)} />
+                          <span className="shopping-name" onClick={() => onToggleManual(item.id)}>
+                            {item.name}
+                          </span>
+                          <button
+                            className="shopping-delete"
+                            type="button"
+                            onClick={() => onDeleteManual(item.id)}
+                            aria-label={`Delete ${item.name}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ),
+                    )}
+                  </>
                 )}
               </div>
             </>
@@ -1479,8 +1572,12 @@ function ShoppingView({
 }
 
 
-function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
-  const totals = new Map<string, number>()
+function buildShoppingList(
+  state: AppState,
+  weekDates: Date[],
+  purchases: Record<string, number>,
+): ShoppingItem[] {
+  const required = new Map<string, number>()
 
   for (const day of weekDates.map(dateKey)) {
     const dayPlan = state.planner[day] ?? {}
@@ -1491,48 +1588,59 @@ function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
         if (!meal) continue
 
         for (const item of meal.ingredients) {
-          totals.set(
+          required.set(
             item.ingredientId,
-            (totals.get(item.ingredientId) ?? 0) + item.quantity,
+            (required.get(item.ingredientId) ?? 0) + item.quantity,
           )
         }
       }
     }
   }
 
-  return [...totals.entries()]
-    .map(([ingredientId, quantity]) => {
-      const ingredient = state.ingredients.find((i) => i.id === ingredientId)
-      if (!ingredient) return null
+  const ingredientIds = new Set([
+    ...required.keys(),
+    ...Object.keys(purchases).filter((id) => (purchases[id] ?? 0) > 0),
+  ])
 
-      return {
+  const lines: ShoppingItem[] = []
+
+  for (const ingredientId of ingredientIds) {
+    const ingredient = state.ingredients.find((item) => item.id === ingredientId)
+    if (!ingredient) continue
+
+    const requiredQuantity = required.get(ingredientId) ?? 0
+    const purchasedQuantity = purchases[ingredientId] ?? 0
+    const outstandingQuantity = Math.max(requiredQuantity - purchasedQuantity, 0)
+
+    if (purchasedQuantity > 0) {
+      lines.push({
+        lineId: `purchased:${ingredientId}`,
         ingredientId,
         name: ingredient.name,
         unit: ingredient.unit,
-        quantity,
-        checked: !!state.shoppingChecked[ingredientId],
-      }
-    })
-    .filter((x): x is ShoppingItem => x !== null)
-    .sort((a, b) => {
-      if (a.checked !== b.checked) {
-        return Number(a.checked) - Number(b.checked)
-      }
+        quantity: purchasedQuantity,
+        checked: true,
+      })
+    }
 
-      return a.name.localeCompare(b.name)
-    })
-}
+    if (outstandingQuantity > 0) {
+      lines.push({
+        lineId: `outstanding:${ingredientId}`,
+        ingredientId,
+        name: ingredient.name,
+        unit: ingredient.unit,
+        quantity: outstandingQuantity,
+        checked: false,
+      })
+    }
+  }
 
-function getWeekDatesForDateKey(key: string): Date[] {
-  const date = new Date(`${key}T12:00:00`)
-  const monday = new Date(date)
-  const day = monday.getDay() || 7
-  monday.setDate(monday.getDate() - day + 1)
+  return lines.sort((a, b) => {
+    if (a.checked !== b.checked) {
+      return Number(a.checked) - Number(b.checked)
+    }
 
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
+    return a.name.localeCompare(b.name)
   })
 }
 
@@ -1544,6 +1652,20 @@ function formatHistoryDate(value: string) {
     month: 'short',
     day: 'numeric',
     year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+  })
+}
+
+function getWeekDatesForDateKey(key: string): Date[] {
+  const date = new Date(`${key}T12:00:00`)
+  const monday = new Date(date)
+
+  const day = monday.getDay() || 7
+  monday.setDate(monday.getDate() - day + 1)
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
   })
 }
 

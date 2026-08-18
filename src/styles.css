@@ -609,3 +609,61 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .remove-slot-meal:hover {
   color: var(--danger);
 }
+
+/* Purchased vs newly required shopping quantities */
+.shopping-name {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shopping-status {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shopping-item.checked .shopping-status {
+  text-decoration: none;
+}
+
+/* Explicit shopping purchase batches */
+.shopping-group-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #faf8f4;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.shopping-group-label small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.purchased-group-label {
+  border-top: 2px solid var(--line);
+  margin-top: 2px;
+}
+
+.shopping-status {
+  text-decoration: none !important;
+  opacity: .8;
+}
+
+/* Static planner meal-card color */
+.planned-meal {
+  background: #e5e3df;
+  border-color: #cbc7c1;
+  color: #514e49;
+}
