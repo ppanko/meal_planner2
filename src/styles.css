@@ -28,13 +28,23 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .primary { border: 0; background: var(--accent); color: white; border-radius: 9px; padding: 10px 15px; font-weight: 700; }
 .week-controls { display: flex; gap: 6px; }
 .week-controls button:first-child, .week-controls button:last-child { width: 38px; font-size: 20px; padding: 5px; }
-.planner-layout { display: grid; grid-template-columns: 270px minmax(700px, 1fr); gap: 22px; align-items: start; }
+.planner-layout { display: grid; grid-template-columns: 300px minmax(700px, 1fr); gap: 22px; align-items: start; }
 .meal-library, .meal-library-full { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 18px; }
+.meal-library { display: flex; flex-direction: column; max-height: 74vh; min-height: 420px; overflow: hidden; }
 .meal-library h3 { margin-bottom: 5px; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.library-group { margin-top: 20px; }
-.library-group h4 { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .12em; margin-bottom: 7px; }
-.meal-card { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 10px 11px; margin: 6px 0; text-align: left; color: #2d2a25; touch-action: none; }
+.meal-browser-header { flex: 0 0 auto; }
+.meal-search-wrap { position: relative; display: flex; align-items: center; margin: 12px 0 10px; }
+.meal-search-wrap > span { position: absolute; left: 10px; color: var(--muted); font-size: 14px; pointer-events: none; }
+.meal-search { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: white; padding: 9px 31px 9px 30px; outline: none; color: #2d2a25; }
+.meal-search:focus { border-color: #a9b8aa; box-shadow: 0 0 0 2px var(--accent-soft); }
+.meal-search-clear { position: absolute; right: 6px; border: 0; background: transparent; color: var(--muted); font-size: 18px; padding: 2px 6px; }
+.meal-browser-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 3px; scrollbar-gutter: stable; }
+.meal-browser-empty { padding: 18px 8px; color: var(--muted); font-size: 12px; text-align: center; }
+.meal-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-meal-browser-toggle { display: none; width: 100%; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: #4f4a43; padding: 10px 12px; margin-bottom: 12px; align-items: center; justify-content: space-between; font-weight: 700; }
+.mobile-meal-browser-toggle span { color: var(--muted); font-size: 11px; font-weight: 600; }
+.meal-card { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; padding: 7px 9px; margin: 0 0 5px; text-align: left; color: #2d2a25; touch-action: none; min-height: 34px; }
 .meal-card:hover { border-color: #a9b8aa; }
 .drag-handle { color: #aaa39b; font-size: 13px; letter-spacing: -3px; }
 .dragging { opacity: .45; }
@@ -73,6 +83,13 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .shopping-item strong { grid-column: 3; font-size: 12px; color: var(--muted); }
 .shopping-item.checked .shopping-name, .shopping-item.checked strong { text-decoration: line-through; color: #aaa39b; }
 .empty-state { border: 1px dashed var(--line); border-radius: 13px; padding: 45px; text-align: center; color: var(--muted); }
+.empty-slot {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: #8a8a8a;
+  line-height: 1.1;
+  text-align: center;
+}
 .bottom-nav { position: fixed; z-index: 10; bottom: 0; left: 0; right: 0; height: 66px; display: flex; justify-content: center; background: rgba(255,253,249,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 .bottom-nav button { position: relative; width: 130px; border: 0; background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .bottom-nav button.active { color: var(--accent); }
@@ -99,7 +116,9 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .content { padding: 18px 14px 24px; }
   .topbar { padding: 0 16px; height: 66px; }
   .planner-layout { display: block; }
-  .meal-library { display: none; }
+  .mobile-meal-browser-toggle { display: flex; }
+  .meal-library { display: none; max-height: 52vh; min-height: 0; margin-bottom: 14px; }
+  .meal-library.mobile-open { display: flex; }
   .meal-library-full { grid-template-columns: 1fr; }
   .planner-scroll { margin: 0 -14px; padding: 0 14px; }
   .section-header { margin-bottom: 16px; }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
-  closestCenter,
   DragEndEvent,
   DragOverlay,
   PointerSensor,
@@ -41,13 +40,6 @@ function App() {
   )
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
-  const mealsByType = useMemo(() => {
-    if (!state) return { Breakfast: [], Lunch: [], Dinner: [] } as Record<MealType, Meal[]>
-    return mealTypes.reduce((acc, type) => {
-      acc[type] = state.meals.filter((meal) => meal.type === type)
-      return acc
-    }, {} as Record<MealType, Meal[]>)
-  }, [state?.meals])
 
   const shopping = useMemo(() => state ? buildShoppingList(state, weekDates) : [], [state, weekDates])
   const activeMeal = activeMealId && state ? state.meals.find((m) => m.id === activeMealId) ?? null : null
@@ -196,7 +188,6 @@ function App() {
               weekDates={weekDates}
               weekOffset={weekOffset}
               setWeekOffset={setWeekOffset}
-              mealsByType={mealsByType}
               addMeal={addMeal}
               removeMeal={removeMeal}
             />
@@ -244,15 +235,32 @@ function App() {
   )
 }
 
-function PlannerView({ state, weekDates, weekOffset, setWeekOffset, mealsByType, addMeal, removeMeal }: {
+function PlannerView({
+  state,
+  weekDates,
+  weekOffset,
+  setWeekOffset,
+  addMeal,
+  removeMeal,
+}: {
   state: AppState
   weekDates: Date[]
   weekOffset: number
   setWeekOffset: (n: number) => void
-  mealsByType: Record<MealType, Meal[]>
   addMeal: (meal: Meal) => void
   removeMeal: (day: string, type: MealType) => void
 }) {
+  const [mealSearch, setMealSearch] = useState('')
+  const [showMealBrowser, setShowMealBrowser] = useState(false)
+
+  const filteredMeals = useMemo(() => {
+    const query = mealSearch.trim().toLowerCase()
+
+    return [...state.meals]
+      .filter((meal) => !query || meal.name.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [state.meals, mealSearch])
+
   return (
     <section className="planner-page">
       <div className="section-header">
@@ -267,31 +275,86 @@ function PlannerView({ state, weekDates, weekOffset, setWeekOffset, mealsByType,
         </div>
       </div>
 
+      <button
+        className="mobile-meal-browser-toggle"
+        type="button"
+        onClick={() => setShowMealBrowser((open) => !open)}
+      >
+        {showMealBrowser ? 'Hide meals' : 'Browse meals'}
+        <span>{filteredMeals.length}</span>
+      </button>
+
       <div className="planner-layout">
-        <aside className="meal-library">
-          <h3>Meals</h3>
-          <p className="hint">Drag a meal to a slot, or tap it to add it to the next empty slot.</p>
-          {mealTypes.map((type) => (
-            <div className="library-group" key={type}>
-              <h4>{type}</h4>
-              {mealsByType[type].map((meal) => <DraggableMeal key={meal.id} meal={meal} onTap={() => addMeal(meal)} />)}
+        <aside className={`meal-library ${showMealBrowser ? 'mobile-open' : ''}`}>
+          <div className="meal-browser-header">
+            <h3>Meals</h3>
+            <p className="hint">Drag a meal to a slot, or tap it to add it to the next empty slot.</p>
+
+            <div className="meal-search-wrap">
+              <span aria-hidden="true">⌕</span>
+              <input
+                className="meal-search"
+                type="search"
+                value={mealSearch}
+                onChange={(event) => setMealSearch(event.target.value)}
+                placeholder="Search meals…"
+                aria-label="Search meals"
+              />
+              {mealSearch && (
+                <button
+                  className="meal-search-clear"
+                  type="button"
+                  onClick={() => setMealSearch('')}
+                  aria-label="Clear meal search"
+                >
+                  ×
+                </button>
+              )}
             </div>
-          ))}
+          </div>
+
+          <div className="meal-browser-list">
+            {filteredMeals.length > 0 ? (
+              filteredMeals.map((meal) => (
+                <DraggableMeal
+                  key={meal.id}
+                  meal={meal}
+                  onTap={() => addMeal(meal)}
+                />
+              ))
+            ) : (
+              <div className="meal-browser-empty">No meals match “{mealSearch}”.</div>
+            )}
+          </div>
         </aside>
 
         <div className="planner-scroll">
           <div className="planner-grid">
             <div className="corner" />
-            {weekDates.map((date, i) => <div className="day-header" key={date.toISOString()}><b>{dayShort[i]}</b><span>{date.getDate()}</span></div>)}
+            {weekDates.map((date, i) => (
+              <div className="day-header" key={date.toISOString()}>
+                <b>{dayShort[i]}</b>
+                <span>{date.getDate()}</span>
+              </div>
+            ))}
+
             {mealTypes.map((type) => (
               <div className="planner-row" key={type}>
                 <div className="meal-type-label">{type}</div>
-                {weekDates.map((date, i) => {
-                  const day = days[i]
+                {weekDates.map((date) => {
                   const key = dateKey(date)
                   const mealId = state.planner[key]?.[type] ?? null
                   const meal = mealId ? state.meals.find((m) => m.id === mealId) : null
-                  return <PlannerSlot key={key} day={key} type={type} meal={meal} onRemove={() => removeMeal(key, type)} />
+
+                  return (
+                    <PlannerSlot
+                      key={key}
+                      day={key}
+                      type={type}
+                      meal={meal}
+                      onRemove={() => removeMeal(key, type)}
+                    />
+                  )
                 })}
               </div>
             ))}
@@ -303,17 +366,22 @@ function PlannerView({ state, weekDates, weekOffset, setWeekOffset, mealsByType,
 }
 
 function DraggableMeal({ meal, onTap }: { meal: Meal; onTap: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `meal-${meal.id}` })
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `meal-${meal.id}`,
+  })
+
   return (
     <button
       ref={setNodeRef}
+      type="button"
       className={`meal-card ${isDragging ? 'dragging' : ''}`}
       style={{ transform: CSS.Translate.toString(transform) }}
       {...listeners}
       {...attributes}
       onClick={onTap}
     >
-      <span className="drag-handle">⋮⋮</span>{meal.name}
+      <span className="drag-handle" aria-hidden="true">⋮⋮</span>
+      <span className="meal-card-name">{meal.name}</span>
     </button>
   )
 }
