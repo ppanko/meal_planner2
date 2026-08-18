@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
+  closestCenter,
   DragEndEvent,
   DragOverlay,
   PointerSensor,
