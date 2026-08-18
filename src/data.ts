@@ -14,6 +14,7 @@ export const seedProteinCategories: ProteinCategory[] = [
 export const seedState: AppState = {
   proteinCategories: seedProteinCategories,
   plannerRowsByWeek: {},
+  shoppingHistory: [],
   ingredients: [
     { id: 'eggs', name: 'Eggs', unit: 'each', proteinCategoryId: null },
     { id: 'milk', name: 'Milk', unit: 'cup', proteinCategoryId: null },

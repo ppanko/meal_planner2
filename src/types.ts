@@ -47,6 +47,12 @@ export type ShoppingItem = {
   checked: boolean
 }
 
+export type ShoppingHistoryItem = {
+  id: string
+  name: string
+  lastPurchasedAt: string
+}
+
 export type AppState = {
   ingredients: Ingredient[]
   meals: Meal[]
@@ -55,4 +61,5 @@ export type AppState = {
   manualShoppingItems: Record<string, ManualShoppingItem[]>
   proteinCategories: ProteinCategory[]
   plannerRowsByWeek: Record<string, PlannerRow[]>
+  shoppingHistory: ShoppingHistoryItem[]
 }

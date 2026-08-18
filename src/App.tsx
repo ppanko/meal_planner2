@@ -12,7 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
-import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, PlannerRow, ProteinCategory, ShoppingItem } from './types'
+import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, PlannerRow, ProteinCategory, ShoppingHistoryItem, ShoppingItem } from './types'
 import { mealTypes } from './data'
 import { loadState, saveState } from './storage'
 
@@ -27,6 +27,34 @@ function getPlannerRows(state: AppState, weekDates: Date[]): PlannerRow[] {
 }
 
 
+function upsertShoppingHistory(
+  history: ShoppingHistoryItem[],
+  name: string,
+): ShoppingHistoryItem[] {
+  const normalized = name.trim().toLowerCase()
+  if (!normalized) return history
+
+  const now = new Date().toISOString()
+  const existing = history.find((item) => item.name.trim().toLowerCase() === normalized)
+
+  if (existing) {
+    return history.map((item) =>
+      item.id === existing.id
+        ? { ...item, name: name.trim(), lastPurchasedAt: now }
+        : item,
+    )
+  }
+
+  return [
+    ...history,
+    {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      lastPurchasedAt: now,
+    },
+  ]
+}
+
 function App() {
   const [state, setState] = useState<AppState | null>(null)
   const [storageReady, setStorageReady] = useState(false)
@@ -35,6 +63,7 @@ function App() {
   const [activeMealId, setActiveMealId] = useState<string | null>(null)
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [showMealForm, setShowMealForm] = useState(false)
+  const [duplicateMode, setDuplicateMode] = useState(false)
 
   useEffect(() => {
     loadState().then((loaded) => {
@@ -194,8 +223,23 @@ function App() {
       ? state.meals.map((m) => m.id === oldId ? meal : m)
       : [...state.meals, meal]
     update({ ...state, meals })
+    setDuplicateMode(false)
     setEditingMeal(null)
     setShowMealForm(false)
+  }
+
+  function duplicateMeal(meal: Meal) {
+    const duplicate: Meal = {
+      ...meal,
+      id: crypto.randomUUID(),
+      name: `${meal.name} Copy`,
+      ingredients: meal.ingredients.map((item) => ({ ...item })),
+    }
+
+    setDuplicateMode(true)
+    setEditingMeal(duplicate)
+    setShowMealForm(true)
+    setView('meals')
   }
 
   function deleteMeal(mealId: string) {
@@ -211,9 +255,17 @@ function App() {
 
   function toggleShopping(id: string) {
     if (!state) return
+
+    const nextChecked = !state.shoppingChecked[id]
+    const ingredient = state.ingredients.find((item) => item.id === id)
+
     update({
       ...state,
-      shoppingChecked: { ...state.shoppingChecked, [id]: !state.shoppingChecked[id] },
+      shoppingChecked: { ...state.shoppingChecked, [id]: nextChecked },
+      shoppingHistory:
+        nextChecked && ingredient
+          ? upsertShoppingHistory(state.shoppingHistory, ingredient.name)
+          : state.shoppingHistory,
     })
   }
 
@@ -238,17 +290,63 @@ function App() {
     })
   }
 
+  function addHistoryItemToShopping(name: string) {
+    if (!state) return
+
+    const trimmed = name.trim()
+    if (!trimmed) return
+
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    const alreadyPresent = current.some(
+      (item) => item.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    )
+
+    if (alreadyPresent) return
+
+    const item: ManualShoppingItem = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      checked: false,
+    }
+
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: [...current, item],
+      },
+    })
+  }
+
+  function deleteShoppingHistoryItem(id: string) {
+    if (!state) return
+
+    update({
+      ...state,
+      shoppingHistory: state.shoppingHistory.filter((item) => item.id !== id),
+    })
+  }
+
   function toggleManualShoppingItem(id: string) {
     if (!state) return
+
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    const target = current.find((item) => item.id === id)
+    if (!target) return
+
+    const nextChecked = !target.checked
+
     update({
       ...state,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: current.map((item) =>
-          item.id === id ? { ...item, checked: !item.checked } : item,
+          item.id === id ? { ...item, checked: nextChecked } : item,
         ),
       },
+      shoppingHistory: nextChecked
+        ? upsertShoppingHistory(state.shoppingHistory, target.name)
+        : state.shoppingHistory,
     })
   }
 
@@ -335,10 +433,10 @@ function App() {
             <MealsView
               meals={state.meals}
               ingredients={state.ingredients}
-              onNew={() => { setEditingMeal(null); setShowMealForm(true) }}
-              onEdit={(meal) => { setEditingMeal(meal); setShowMealForm(true) }}
+              onNew={() => { setDuplicateMode(false); setEditingMeal(null); setShowMealForm(true) }}
+              onEdit={(meal) => { setDuplicateMode(false); setEditingMeal(meal); setShowMealForm(true) }}
               onDelete={deleteMeal}
-              onAdd={addMeal}
+              onDuplicate={duplicateMeal}
               proteinCategories={state.proteinCategories}
             />
           )}
@@ -351,6 +449,9 @@ function App() {
               onToggleManual={toggleManualShoppingItem}
               onDeleteManual={deleteManualShoppingItem}
               onClearChecked={clearCheckedShopping}
+              history={state.shoppingHistory}
+              onAddHistory={addHistoryItemToShopping}
+              onDeleteHistory={deleteShoppingHistoryItem}
               weekDates={weekDates}
               weekOffset={weekOffset}
               setWeekOffset={setWeekOffset}
@@ -376,7 +477,8 @@ function App() {
             meal={editingMeal}
             ingredients={state.ingredients}
             proteinCategories={state.proteinCategories}
-            onCancel={() => { setEditingMeal(null); setShowMealForm(false) }}
+            duplicateMode={duplicateMode}
+            onCancel={() => { setDuplicateMode(false); setEditingMeal(null); setShowMealForm(false) }}
             onSave={saveMeal}
             onCreateIngredient={(ingredient) => update({ ...state, ingredients: [...state.ingredients, ingredient] })}
             onCreateProteinCategory={(category) =>
@@ -781,8 +883,8 @@ function PlannerSlot({
   )
 }
 
-function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onAdd, proteinCategories }: {
-  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onAdd: (m: Meal) => void; proteinCategories: ProteinCategory[]
+function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onDuplicate, proteinCategories }: {
+  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onDuplicate: (m: Meal) => void; proteinCategories: ProteinCategory[]
 }) {
   return (
     <section>
@@ -793,14 +895,14 @@ function MealsView({ meals, ingredients, onNew, onEdit, onDelete, onAdd, protein
       <div className="meal-library-full">
         {mealTypes.map((type) => {
           const group = meals.filter((m) => m.type === type)
-          return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onAdd={() => onAdd(meal)} />)}</div>
+          return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)}</div>
         })}
       </div>
     </section>
   )
 }
 
-function MealEditorCard({ meal, ingredients, proteinCategories, onEdit, onDelete, onAdd }: { meal: Meal; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onEdit: () => void; onDelete: () => void; onAdd: () => void }) {
+function MealEditorCard({ meal, ingredients, proteinCategories, onEdit, onDelete, onDuplicate }: { meal: Meal; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onEdit: () => void; onDelete: () => void; onDuplicate: () => void }) {
   return (
     <article className="meal-detail-card">
       <div className="meal-detail-top">
@@ -808,13 +910,13 @@ function MealEditorCard({ meal, ingredients, proteinCategories, onEdit, onDelete
         <span className="pill">{meal.type}</span>
       </div>
       <ul>{meal.ingredients.map((mi) => { const ing = ingredients.find((i) => i.id === mi.ingredientId); return ing ? <li key={mi.ingredientId}>{formatQuantity(mi.quantity)} {ing.unit} {ing.name}</li> : null })}</ul>
-      <div className="card-actions"><button onClick={onAdd}>Add to planner</button><button onClick={onEdit}>Edit</button><button className="danger-text" onClick={onDelete}>Delete</button></div>
+      <div className="card-actions"><button onClick={onDuplicate}>Duplicate meal</button><button onClick={onEdit}>Edit</button><button className="danger-text" onClick={onDelete}>Delete</button></div>
     </article>
   )
 }
 
-function MealForm({ meal, ingredients, proteinCategories, onCancel, onSave, onCreateIngredient, onCreateProteinCategory }: {
-  meal: Meal | null | undefined; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void; onCreateProteinCategory: (category: ProteinCategory) => void
+function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false, onCancel, onSave, onCreateIngredient, onCreateProteinCategory }: {
+  meal: Meal | null | undefined; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; duplicateMode?: boolean; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void; onCreateProteinCategory: (category: ProteinCategory) => void
 }) {
   const [name, setName] = useState(meal?.name ?? '')
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
@@ -841,12 +943,21 @@ function MealForm({ meal, ingredients, proteinCategories, onCancel, onSave, onCr
   }
   function save() {
     if (!name.trim() || rows.length === 0) return
-    onSave({ id: meal?.id ?? crypto.randomUUID(), name: name.trim(), type, proteinCategoryOverrideId: proteinCategoryOverrideId || null, ingredients: rows }, meal?.id)
+    onSave(
+      {
+        id: meal?.id ?? crypto.randomUUID(),
+        name: name.trim(),
+        type,
+        proteinCategoryOverrideId: proteinCategoryOverrideId || null,
+        ingredients: rows,
+      },
+      duplicateMode ? undefined : meal?.id,
+    )
   }
 
   return (
     <div className="modal-backdrop"><div className="modal">
-      <div className="modal-header"><h2>{meal ? 'Edit meal' : 'New meal'}</h2><button onClick={onCancel}>×</button></div>
+      <div className="modal-header"><h2>{duplicateMode ? 'Duplicate meal' : meal ? 'Edit meal' : 'New meal'}</h2><button onClick={onCancel}>×</button></div>
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken tacos" autoFocus /></label>
       <label>Type<select value={type} onChange={(e) => setType(e.target.value as MealType)}>{mealTypes.map((t) => <option key={t}>{t}</option>)}</select></label>
       <label>
@@ -957,6 +1068,9 @@ function ShoppingView({
   onToggleManual,
   onDeleteManual,
   onClearChecked,
+  history,
+  onAddHistory,
+  onDeleteHistory,
   weekDates,
   weekOffset,
   setWeekOffset,
@@ -968,19 +1082,72 @@ function ShoppingView({
   onToggleManual: (id: string) => void
   onDeleteManual: (id: string) => void
   onClearChecked: () => void
+  history: ShoppingHistoryItem[]
+  onAddHistory: (name: string) => void
+  onDeleteHistory: (id: string) => void
   weekDates: Date[]
   weekOffset: number
   setWeekOffset: (n: number) => void
 }) {
   const [newItem, setNewItem] = useState('')
-  const remaining = shopping.filter((i) => !i.checked).length + manualItems.filter((i) => !i.checked).length
+  const [historySearch, setHistorySearch] = useState('')
+
+  const remaining =
+    shopping.filter((i) => !i.checked).length +
+    manualItems.filter((i) => !i.checked).length
+
   const hasItems = shopping.length > 0 || manualItems.length > 0
-  const hasChecked = shopping.some((item) => item.checked) || manualItems.some((item) => item.checked)
+  const hasChecked =
+    shopping.some((item) => item.checked) ||
+    manualItems.some((item) => item.checked)
+
+  const combinedShoppingItems = useMemo(() => {
+    const mealItems = shopping.map((item) => ({
+      kind: 'meal' as const,
+      id: item.ingredientId,
+      name: item.name,
+      checked: item.checked,
+      unit: item.unit,
+      quantity: item.quantity,
+    }))
+
+    const manual = manualItems.map((item) => ({
+      kind: 'manual' as const,
+      id: item.id,
+      name: item.name,
+      checked: item.checked,
+      unit: '',
+      quantity: null,
+    }))
+
+    return [...mealItems, ...manual].sort((a, b) => {
+      if (a.checked !== b.checked) {
+        return Number(a.checked) - Number(b.checked)
+      }
+
+      return a.name.localeCompare(b.name)
+    })
+  }, [shopping, manualItems])
+
+  const filteredHistory = useMemo(() => {
+    const query = historySearch.trim().toLowerCase()
+
+    return [...history]
+      .filter((item) => !query || item.name.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const dateDiff =
+          new Date(b.lastPurchasedAt).getTime() -
+          new Date(a.lastPurchasedAt).getTime()
+
+        return dateDiff || a.name.localeCompare(b.name)
+      })
+  }, [history, historySearch])
 
   function submitManualItem(event: FormEvent) {
     event.preventDefault()
     const trimmed = newItem.trim()
     if (!trimmed) return
+
     onAddManual(trimmed)
     setNewItem('')
   }
@@ -988,65 +1155,158 @@ function ShoppingView({
   return (
     <section>
       <div className="section-header">
-        <div><div className="eyebrow">SHOPPING</div><h2>{formatRange(weekDates)}</h2></div>
-        <div className="week-controls"><button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button><button onClick={() => setWeekOffset(0)}>Today</button><button onClick={() => setWeekOffset(weekOffset + 1)}>›</button></div>
+        <div>
+          <div className="eyebrow">SHOPPING</div>
+          <h2>{formatRange(weekDates)}</h2>
+        </div>
+
+        <div className="week-controls">
+          <button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button>
+          <button onClick={() => setWeekOffset(0)}>Today</button>
+          <button onClick={() => setWeekOffset(weekOffset + 1)}>›</button>
+        </div>
       </div>
 
-      <form className="shopping-add" onSubmit={submitManualItem}>
-        <input
-          type="text"
-          value={newItem}
-          onChange={(event) => setNewItem(event.target.value)}
-          placeholder="Add anything to the shopping list…"
-          aria-label="Add shopping list item"
-        />
-        <button className="primary" type="submit">Add</button>
-      </form>
+      <div className="shopping-layout">
+        <div className="shopping-current">
+          <form className="shopping-add" onSubmit={submitManualItem}>
+            <input
+              type="text"
+              value={newItem}
+              onChange={(event) => setNewItem(event.target.value)}
+              placeholder="Add anything to the shopping list…"
+              aria-label="Add shopping list item"
+            />
+            <button className="primary" type="submit">Add</button>
+          </form>
 
-      {hasChecked && <div style={{ marginBottom: 14 }}><button className="secondary" onClick={onClearChecked}>Clear checks</button></div>}
+          {hasChecked && (
+            <div style={{ marginBottom: 14 }}>
+              <button className="secondary" onClick={onClearChecked}>Clear checks</button>
+            </div>
+          )}
 
-      {!hasItems ? (
-        <div className="empty-state"><h3>Shopping list is empty</h3><p>Add an item above or plan meals for this week.</p></div>
-      ) : (
-        <>
-          <p className="shopping-summary">{remaining} item{remaining === 1 ? '' : 's'} remaining</p>
-          <div className="shopping-list">
-            {shopping.map((item) => (
-              <label className={`shopping-item ${item.checked ? 'checked' : ''}`} key={`meal-${item.ingredientId}`}>
-                <input type="checkbox" checked={item.checked} onChange={() => onToggle(item.ingredientId)} />
-                <span className="checkmark" />
-                <span className="shopping-name">{item.name}</span>
-                <strong>{formatQuantity(item.quantity)} {item.unit}</strong>
-              </label>
-            ))}
+          {!hasItems ? (
+            <div className="empty-state">
+              <h3>Shopping list is empty</h3>
+              <p>Add an item above, reuse a past item, or plan meals for this week.</p>
+            </div>
+          ) : (
+            <>
+              <p className="shopping-summary">
+                {remaining} item{remaining === 1 ? '' : 's'} remaining
+              </p>
 
-            {manualItems.map((item) => (
-              <div className={`shopping-item manual-shopping-item ${item.checked ? 'checked' : ''}`} key={`manual-${item.id}`}>
-                <input
-                  className="manual-shopping-checkbox"
-                  type="checkbox"
-                  checked={item.checked}
-                  onChange={() => onToggleManual(item.id)}
-                  aria-label={`Mark ${item.name} ${item.checked ? 'not purchased' : 'purchased'}`}
-                />
-                <span className="checkmark" onClick={() => onToggleManual(item.id)} />
-                <span className="shopping-name" onClick={() => onToggleManual(item.id)}>{item.name}</span>
-                <button
-                  className="shopping-delete"
-                  type="button"
-                  onClick={() => onDeleteManual(item.id)}
-                  aria-label={`Delete ${item.name}`}
-                >
-                  ×
-                </button>
+              <div className="shopping-list">
+                {combinedShoppingItems.map((item) =>
+                  item.kind === 'meal' ? (
+                    <label
+                      className={`shopping-item ${item.checked ? 'checked' : ''}`}
+                      key={`meal-${item.id}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => onToggle(item.id)}
+                      />
+                      <span className="checkmark" />
+                      <span className="shopping-name">{item.name}</span>
+                      <strong>
+                        {formatQuantity(item.quantity)} {item.unit}
+                      </strong>
+                    </label>
+                  ) : (
+                    <div
+                      className={`shopping-item manual-shopping-item ${item.checked ? 'checked' : ''}`}
+                      key={`manual-${item.id}`}
+                    >
+                      <input
+                        className="manual-shopping-checkbox"
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => onToggleManual(item.id)}
+                        aria-label={`Mark ${item.name} ${item.checked ? 'not purchased' : 'purchased'}`}
+                      />
+                      <span className="checkmark" onClick={() => onToggleManual(item.id)} />
+                      <span className="shopping-name" onClick={() => onToggleManual(item.id)}>
+                        {item.name}
+                      </span>
+                      <button
+                        className="shopping-delete"
+                        type="button"
+                        onClick={() => onDeleteManual(item.id)}
+                        aria-label={`Delete ${item.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ),
+                )}
               </div>
-            ))}
+            </>
+          )}
+        </div>
+
+        <aside className="shopping-history">
+          <div className="shopping-history-header">
+            <div>
+              <div className="eyebrow">PAST ITEMS</div>
+              <h3>Previously purchased</h3>
+            </div>
+            <span>{history.length}</span>
           </div>
-        </>
-      )}
+
+          <input
+            className="history-search"
+            type="search"
+            value={historySearch}
+            onChange={(event) => setHistorySearch(event.target.value)}
+            placeholder="Search past items…"
+            aria-label="Search past shopping items"
+          />
+
+          {filteredHistory.length === 0 ? (
+            <div className="history-empty">
+              Checked-off shopping items will appear here for quick reuse.
+            </div>
+          ) : (
+            <div className="history-table">
+              {filteredHistory.map((item) => (
+                <div className="history-row" key={item.id}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>
+                      Last purchased {formatHistoryDate(item.lastPurchasedAt)}
+                    </small>
+                  </div>
+
+                  <button
+                    className="history-add"
+                    type="button"
+                    onClick={() => onAddHistory(item.name)}
+                  >
+                    + Add
+                  </button>
+
+                  <button
+                    className="history-delete"
+                    type="button"
+                    onClick={() => onDeleteHistory(item.id)}
+                    aria-label={`Remove ${item.name} from past items`}
+                    title="Remove from history"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
     </section>
   )
 }
+
 
 function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
   const totals = new Map<string, number>()
@@ -1083,7 +1343,13 @@ function buildShoppingList(state: AppState, weekDates: Date[]): ShoppingItem[] {
       }
     })
     .filter((x): x is ShoppingItem => x !== null)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => {
+      if (a.checked !== b.checked) {
+        return Number(a.checked) - Number(b.checked)
+      }
+
+      return a.name.localeCompare(b.name)
+    })
 }
 
 function getWeekDatesForDateKey(key: string): Date[] {
@@ -1096,6 +1362,17 @@ function getWeekDatesForDateKey(key: string): Date[] {
     const d = new Date(monday)
     d.setDate(monday.getDate() + i)
     return d
+  })
+}
+
+function formatHistoryDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
   })
 }
 
