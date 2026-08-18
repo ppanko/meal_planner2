@@ -67,7 +67,7 @@ function App() {
     const target = event.over?.id ? String(event.over.id) : null
     if (!target?.startsWith('slot-')) return
     const [, day, type] = target.split('|')
-    if (!days.includes(day as typeof days[number]) || !mealTypes.includes(type as MealType)) return
+    if (!day || !mealTypes.includes(type as MealType)) return
 
     const planner: Planner = JSON.parse(JSON.stringify(state.planner))
     planner[day] ??= { Breakfast: null, Lunch: null, Dinner: null }
