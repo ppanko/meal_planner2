@@ -41,6 +41,32 @@ describe('useMealsController', () => {
     expect(result.current.editingMeal).toBeNull()
   })
 
+  it('opens library management and cooking as mutually exclusive surfaces', () => {
+    const { result } = setup()
+    const meal = createAppState().meals[0]
+
+    act(() => result.current.openLibraryManager())
+    expect(result.current.showLibraryManager).toBe(true)
+    expect(result.current.showMealForm).toBe(false)
+
+    act(() => result.current.startCooking(meal))
+    expect(result.current.showLibraryManager).toBe(false)
+    expect(result.current.cookingMeal).toBe(meal)
+
+    act(() => result.current.openNewMeal())
+    expect(result.current.cookingMeal).toBeNull()
+    expect(result.current.showMealForm).toBe(true)
+
+    act(() => result.current.closeMealForm())
+    act(() => result.current.openLibraryManager())
+    act(() => result.current.closeLibraryManager())
+    expect(result.current.showLibraryManager).toBe(false)
+
+    act(() => result.current.startCooking(meal))
+    act(() => result.current.closeCooking())
+    expect(result.current.cookingMeal).toBeNull()
+  })
+
   it('creates and edits meals using immutable state updates', () => {
     const state = createAppState()
     const { result, update } = setup(state)
@@ -75,6 +101,7 @@ describe('useMealsController', () => {
       name: `${original.name} Copy`,
     })
     expect(result.current.editingMeal?.ingredients).not.toBe(original.ingredients)
+    expect(result.current.editingMeal?.instructions).not.toBe(original.instructions)
     expect(setView).toHaveBeenCalledWith('meals')
   })
 
@@ -124,6 +151,10 @@ describe('useMealsController', () => {
       ingredients: [...state.ingredients, ingredient],
     }))
 
+    update.mockClear()
+    act(() => result.current.createIngredient(state.ingredients[0]))
+    expect(update).not.toHaveBeenCalled()
+
     act(() => result.current.deleteIngredient('eggs'))
     expect(updateWithUndo).not.toHaveBeenCalled()
 
@@ -151,6 +182,10 @@ describe('useMealsController', () => {
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       proteinCategories: [...state.proteinCategories, category],
     }))
+
+    update.mockClear()
+    act(() => result.current.createProteinCategory(state.proteinCategories[0]))
+    expect(update).not.toHaveBeenCalled()
 
     act(() => result.current.deleteProteinCategory('chicken'))
     act(() => result.current.deleteProteinCategory('none'))

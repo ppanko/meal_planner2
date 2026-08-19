@@ -2,6 +2,7 @@ import { defaultShoppingCategories } from './types'
 import type { AppState, Ingredient, Meal, ShoppingCategory } from './types'
 import { seedProteinCategories, seedState } from './data'
 import { sharedStateId, supabase, supabaseConfigured } from './supabase'
+import { normalizeRecipeUrl } from './meals/recipeDetails'
 
 const DB_NAME = 'meal-planner-db'
 const DB_VERSION = 1
@@ -142,6 +143,14 @@ export function normalizeState(state: Partial<AppState>): AppState {
     return {
       ...meal,
       proteinCategoryOverrideId: migratedOverride,
+      recipeUrl: normalizeRecipeUrl(typeof meal.recipeUrl === 'string' ? meal.recipeUrl : '') ?? '',
+      notes: typeof meal.notes === 'string' ? meal.notes.trim() : '',
+      instructions: Array.isArray(meal.instructions)
+        ? meal.instructions
+          .filter((step): step is string => typeof step === 'string')
+          .map((step) => step.trim())
+          .filter(Boolean)
+        : [],
     }
   })
   const manualShoppingItems = Object.fromEntries(

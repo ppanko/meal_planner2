@@ -36,28 +36,28 @@ export const seedState: AppState = {
     { id: 'broccoli', name: 'Broccoli', unit: 'head', proteinCategoryId: null },
   ],
   meals: [
-    { id: 'pancakes', name: 'Pancakes', type: 'Breakfast', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'pancakes', name: 'Pancakes', type: 'Breakfast', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'flour', quantity: 1.5 }, { ingredientId: 'eggs', quantity: 2 },
       { ingredientId: 'milk', quantity: 1 }, { ingredientId: 'butter', quantity: 2 },
     ]},
-    { id: 'scrambled-eggs', name: 'Scrambled Eggs', type: 'Breakfast', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'scrambled-eggs', name: 'Scrambled Eggs', type: 'Breakfast', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'eggs', quantity: 4 }, { ingredientId: 'butter', quantity: 1 },
     ]},
-    { id: 'chicken-salad', name: 'Chicken Salad', type: 'Lunch', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'chicken-salad', name: 'Chicken Salad', type: 'Lunch', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'chicken', quantity: 1 }, { ingredientId: 'lettuce', quantity: 0.5 },
       { ingredientId: 'tomatoes', quantity: 2 },
     ]},
-    { id: 'tacos', name: 'Tacos', type: 'Dinner', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'tacos', name: 'Tacos', type: 'Dinner', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'ground-beef', quantity: 1 }, { ingredientId: 'tortillas', quantity: 8 },
       { ingredientId: 'tomatoes', quantity: 2 }, { ingredientId: 'onions', quantity: 1 },
       { ingredientId: 'lettuce', quantity: 0.5 }, { ingredientId: 'cheese', quantity: 6 },
     ]},
-    { id: 'spaghetti', name: 'Spaghetti Bolognese', type: 'Dinner', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'spaghetti', name: 'Spaghetti Bolognese', type: 'Dinner', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'spaghetti', quantity: 16 }, { ingredientId: 'ground-beef', quantity: 1 },
       { ingredientId: 'tomato-sauce', quantity: 1 }, { ingredientId: 'onions', quantity: 1 },
       { ingredientId: 'garlic', quantity: 2 },
     ]},
-    { id: 'chicken-rice', name: 'Chicken & Rice', type: 'Dinner', proteinCategoryOverrideId: null, ingredients: [
+    { id: 'chicken-rice', name: 'Chicken & Rice', type: 'Dinner', proteinCategoryOverrideId: null, recipeUrl: '', notes: '', instructions: [], ingredients: [
       { ingredientId: 'chicken', quantity: 1 }, { ingredientId: 'rice', quantity: 1.5 },
       { ingredientId: 'broccoli', quantity: 1 }, { ingredientId: 'garlic', quantity: 2 },
     ]},

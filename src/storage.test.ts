@@ -84,6 +84,32 @@ describe('normalizeState', () => {
     expect(result.meals[0].proteinCategoryOverrideId).toBeNull()
   })
 
+  it('adds recipe defaults and sanitizes saved recipe details', () => {
+    const legacy = normalizeState({ meals: [{
+      id: 'legacy', name: 'Legacy', type: 'Dinner', proteinCategoryOverrideId: null, ingredients: [],
+    }] })
+    expect(legacy.meals[0]).toEqual(expect.objectContaining({ recipeUrl: '', notes: '', instructions: [] }))
+
+    const result = normalizeState({ meals: [{
+      id: 'recipe',
+      name: 'Recipe',
+      type: 'Dinner',
+      proteinCategoryOverrideId: null,
+      ingredients: [],
+      recipeUrl: ' example.com/recipe ',
+      notes: '  Remember this.  ',
+      instructions: ['  First  ', '', ' Second ', 42] as unknown as string[],
+    }] })
+    expect(result.meals[0]).toEqual(expect.objectContaining({
+      recipeUrl: 'https://example.com/recipe',
+      notes: 'Remember this.',
+      instructions: ['First', 'Second'],
+    }))
+
+    const unsafe = normalizeState({ meals: [{ ...result.meals[0], recipeUrl: 'javascript:alert(1)' }] })
+    expect(unsafe.meals[0].recipeUrl).toBe('')
+  })
+
   it('sanitizes categories, order, and category references', () => {
     const result = normalizeState({
       shoppingCategories: [

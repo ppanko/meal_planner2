@@ -45,6 +45,12 @@ vi.mock('./meals/MealForm', () => ({
     </div>
   ),
 }))
+vi.mock('./meals/MealLibraryManager', () => ({
+  MealLibraryManager: ({ onClose, onCreateIngredient }: { onClose: () => void; onCreateIngredient: (ingredient: unknown) => void }) => <div><span>Library manager</span><button onClick={onClose}>Mock close library</button><button onClick={() => onCreateIngredient({ id: 'new' })}>Mock add ingredient</button></div>,
+}))
+vi.mock('./meals/CookingView', () => ({
+  CookingView: ({ meal, onClose }: { meal: { name: string }; onClose: () => void }) => <div><span>Cooking {meal.name}</span><button onClick={onClose}>Mock finish cooking</button></div>,
+}))
 vi.mock('./planner/PlannerSlots', () => ({
   MealCard: ({ meal }: { meal: { name: string } }) => <div>Overlay {meal.name}</div>,
 }))
@@ -79,7 +85,12 @@ beforeEach(() => {
     showMealForm: false,
     editingMeal: null,
     duplicateMode: false,
+    showLibraryManager: false,
+    cookingMeal: null,
     closeMealForm: vi.fn(),
+    closeLibraryManager: vi.fn(),
+    closeCooking: vi.fn(),
+    createIngredient: vi.fn(),
     saveMeal: vi.fn(),
   }
   mocks.shopping = {
@@ -126,6 +137,22 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Mock save meal' }))
     expect(mocks.meals.closeMealForm).toHaveBeenCalled()
     expect(mocks.meals.saveMeal).toHaveBeenCalledWith({ id: 'mock-meal' })
+  })
+
+  it('renders and wires the library manager and cooking view', async () => {
+    const state = mocks.persistent.state as ReturnType<typeof createAppState>
+    mocks.meals = { ...mocks.meals, showLibraryManager: true, cookingMeal: state.meals[0] }
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.getByText('Library manager')).toBeInTheDocument()
+    expect(screen.getByText(`Cooking ${state.meals[0].name}`)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Mock add ingredient' }))
+    await user.click(screen.getByRole('button', { name: 'Mock close library' }))
+    await user.click(screen.getByRole('button', { name: 'Mock finish cooking' }))
+    expect(mocks.meals.createIngredient).toHaveBeenCalledWith({ id: 'new' })
+    expect(mocks.meals.closeLibraryManager).toHaveBeenCalled()
+    expect(mocks.meals.closeCooking).toHaveBeenCalled()
   })
 
   it('copies a selected week and closes the copy dialog', async () => {

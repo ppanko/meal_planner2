@@ -38,6 +38,9 @@ export type Meal = {
   type: MealType
   proteinCategoryOverrideId: string | null
   ingredients: MealIngredient[]
+  recipeUrl?: string
+  notes?: string
+  instructions?: string[]
 }
 export type Planner = Record<string, Record<string, string[]>>
 

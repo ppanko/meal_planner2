@@ -14,17 +14,43 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [showMealForm, setShowMealForm] = useState(false)
   const [duplicateMode, setDuplicateMode] = useState(false)
+  const [showLibraryManager, setShowLibraryManager] = useState(false)
+  const [cookingMeal, setCookingMeal] = useState<Meal | null>(null)
 
   function openNewMeal() {
     setDuplicateMode(false)
     setEditingMeal(null)
     setShowMealForm(true)
+    setShowLibraryManager(false)
+    setCookingMeal(null)
   }
 
   function openEditMeal(meal: Meal) {
     setDuplicateMode(false)
     setEditingMeal(meal)
     setShowMealForm(true)
+    setShowLibraryManager(false)
+    setCookingMeal(null)
+  }
+
+  function openLibraryManager() {
+    closeMealForm()
+    setCookingMeal(null)
+    setShowLibraryManager(true)
+  }
+
+  function closeLibraryManager() {
+    setShowLibraryManager(false)
+  }
+
+  function startCooking(meal: Meal) {
+    closeMealForm()
+    setShowLibraryManager(false)
+    setCookingMeal(meal)
+  }
+
+  function closeCooking() {
+    setCookingMeal(null)
   }
 
   function closeMealForm() {
@@ -48,11 +74,14 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
       id: crypto.randomUUID(),
       name: `${meal.name} Copy`,
       ingredients: meal.ingredients.map((item) => ({ ...item })),
+      instructions: meal.instructions ? [...meal.instructions] : [],
     }
 
     setDuplicateMode(true)
     setEditingMeal(duplicate)
     setShowMealForm(true)
+    setShowLibraryManager(false)
+    setCookingMeal(null)
     setView('meals')
   }
 
@@ -68,6 +97,7 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     }
 
     const deletedMeal = state.meals.find((meal) => meal.id === mealId)
+    if (cookingMeal?.id === mealId) setCookingMeal(null)
     updateWithUndo({
       ...state,
       meals: state.meals.filter((meal) => meal.id !== mealId),
@@ -77,6 +107,7 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
 
   function createIngredient(ingredient: Ingredient) {
     if (!state) return
+    if (state.ingredients.some((item) => item.id === ingredient.id)) return
     update({ ...state, ingredients: [...state.ingredients, ingredient] })
   }
 
@@ -107,6 +138,7 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
 
   function createProteinCategory(category: ProteinCategory) {
     if (!state) return
+    if (state.proteinCategories.some((item) => item.id === category.id)) return
     update({ ...state, proteinCategories: [...state.proteinCategories, category] })
   }
 
@@ -134,9 +166,15 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     editingMeal,
     showMealForm,
     duplicateMode,
+    showLibraryManager,
+    cookingMeal,
     openNewMeal,
     openEditMeal,
     closeMealForm,
+    openLibraryManager,
+    closeLibraryManager,
+    startCooking,
+    closeCooking,
     saveMeal,
     duplicateMeal,
     deleteMeal,

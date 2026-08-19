@@ -5,6 +5,8 @@ import { MealCard } from './planner/PlannerSlots'
 import { usePlannerController } from './planner/usePlannerController'
 import { MealsView } from './meals/MealsView'
 import { MealForm } from './meals/MealForm'
+import { MealLibraryManager } from './meals/MealLibraryManager'
+import { CookingView } from './meals/CookingView'
 import { useMealsController } from './meals/useMealsController'
 import { ShoppingView } from './shopping/ShoppingView'
 import { useShoppingController } from './shopping/useShoppingController'
@@ -86,6 +88,8 @@ function App() {
               meals={state.meals}
               ingredients={state.ingredients}
               onNew={meals.openNewMeal}
+              onManageLibrary={meals.openLibraryManager}
+              onStartCooking={meals.startCooking}
               onEdit={meals.openEditMeal}
               onDelete={meals.deleteMeal}
               onDuplicate={meals.duplicateMeal}
@@ -135,17 +139,29 @@ function App() {
         {meals.showMealForm && (
           <MealForm
             meal={meals.editingMeal}
-            meals={state.meals}
             ingredients={state.ingredients}
             proteinCategories={state.proteinCategories}
             duplicateMode={meals.duplicateMode}
             onCancel={meals.closeMealForm}
             onSave={meals.saveMeal}
+          />
+        )}
+
+        {meals.showLibraryManager && (
+          <MealLibraryManager
+            meals={state.meals}
+            ingredients={state.ingredients}
+            proteinCategories={state.proteinCategories}
+            onClose={meals.closeLibraryManager}
             onCreateIngredient={meals.createIngredient}
             onDeleteIngredient={meals.deleteIngredient}
             onCreateProteinCategory={meals.createProteinCategory}
             onDeleteProteinCategory={meals.deleteProteinCategory}
           />
+        )}
+
+        {meals.cookingMeal && (
+          <CookingView meal={meals.cookingMeal} ingredients={state.ingredients} onClose={meals.closeCooking} />
         )}
 
         {planner.showCopyWeek && (
