@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   DndContext,
@@ -68,6 +68,10 @@ function App() {
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [showMealForm, setShowMealForm] = useState(false)
   const [duplicateMode, setDuplicateMode] = useState(false)
+  const [showCopyWeek, setShowCopyWeek] = useState(false)
+  const [copySourceWeekKey, setCopySourceWeekKey] = useState('')
+  const [undoAction, setUndoAction] = useState<{ message: string; state: AppState } | null>(null)
+  const undoTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -90,6 +94,14 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current !== null) {
+        window.clearTimeout(undoTimerRef.current)
+      }
+    }
+  }, [])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
@@ -103,9 +115,155 @@ function App() {
   const shoppingPurchases = state?.shoppingPurchasesByWeek[shoppingWeekKey] ?? {}
   const activeMeal = activeMealId && state ? state.meals.find((m) => m.id === activeMealId) ?? null : null
 
+  const copyableWeekKeys = useMemo(() => {
+    if (!state) return []
+
+    const keys = new Set<string>()
+
+    for (const [dayKey, dayPlan] of Object.entries(state.planner)) {
+      if (Object.values(dayPlan ?? {}).some((mealIds) => (mealIds?.length ?? 0) > 0)) {
+        keys.add(dateKey(getWeekDatesForDateKey(dayKey)[0]))
+      }
+    }
+
+    for (const [dayKey, dayNotes] of Object.entries(state.plannerNotes)) {
+      if (Object.keys(dayNotes ?? {}).length > 0) {
+        keys.add(dateKey(getWeekDatesForDateKey(dayKey)[0]))
+      }
+    }
+
+    for (const [weekKey, rows] of Object.entries(state.plannerRowsByWeek)) {
+      if ((rows?.length ?? 0) > 0) {
+        keys.add(dateKey(getWeekDatesForDateKey(weekKey)[0]))
+      }
+    }
+
+    keys.delete(shoppingWeekKey)
+    return [...keys].sort((a, b) => b.localeCompare(a))
+  }, [state, shoppingWeekKey])
+
   function update(next: AppState) {
     setState(next)
     void saveState(next)
+  }
+
+  function updateWithUndo(next: AppState, message: string) {
+    if (!state) return
+
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current)
+    }
+
+    const snapshot: AppState = JSON.parse(JSON.stringify(state))
+    setUndoAction({ message, state: snapshot })
+    undoTimerRef.current = window.setTimeout(() => {
+      setUndoAction(null)
+      undoTimerRef.current = null
+    }, 6000)
+
+    update(next)
+  }
+
+  function undoLastAction() {
+    if (!undoAction) return
+
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+    }
+
+    const previous = undoAction.state
+    setUndoAction(null)
+    update(previous)
+  }
+
+  function openCopyWeek() {
+    const previousWeekKey = dateKey(getWeekDates(weekOffset - 1)[0])
+    const preferredSource = copyableWeekKeys.includes(previousWeekKey)
+      ? previousWeekKey
+      : copyableWeekKeys[0] ?? ''
+
+    setCopySourceWeekKey(preferredSource)
+    setShowCopyWeek(true)
+  }
+
+  function copyWeek(sourceWeekKey: string) {
+    if (!state || !sourceWeekKey) return
+
+    const sourceWeekDates = getWeekDatesForDateKey(sourceWeekKey)
+    const targetWeekDates = getWeekDates(weekOffset)
+    const normalizedSourceWeekKey = dateKey(sourceWeekDates[0])
+    const targetWeekKey = dateKey(targetWeekDates[0])
+
+    if (normalizedSourceWeekKey === targetWeekKey) return
+
+    const sourceCustomRows = state.plannerRowsByWeek[normalizedSourceWeekKey] ?? []
+    const customRowIdMap = new Map<string, string>()
+    const copiedCustomRows = sourceCustomRows.map((row) => {
+      const id = `custom-${crypto.randomUUID()}`
+      customRowIdMap.set(row.id, id)
+      return { ...row, id }
+    })
+
+    const remapRowId = (rowId: string) => customRowIdMap.get(rowId) ?? rowId
+    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const plannerNotes = JSON.parse(JSON.stringify(state.plannerNotes)) as AppState['plannerNotes']
+
+    for (let i = 0; i < 7; i += 1) {
+      const sourceDayKey = dateKey(sourceWeekDates[i])
+      const targetDayKey = dateKey(targetWeekDates[i])
+      const sourceDayPlan = state.planner[sourceDayKey] ?? {}
+      const sourceDayNotes = state.plannerNotes[sourceDayKey] ?? {}
+
+      delete planner[targetDayKey]
+      delete plannerNotes[targetDayKey]
+
+      const copiedDayPlan: Record<string, string[]> = {}
+      for (const [rowId, mealIds] of Object.entries(sourceDayPlan)) {
+        if ((mealIds?.length ?? 0) > 0) {
+          copiedDayPlan[remapRowId(rowId)] = [...mealIds]
+        }
+      }
+
+      if (Object.keys(copiedDayPlan).length > 0) {
+        planner[targetDayKey] = copiedDayPlan
+      }
+
+      const copiedDayNotes: Record<string, string> = {}
+      for (const [rowId, note] of Object.entries(sourceDayNotes)) {
+        if (note) {
+          copiedDayNotes[remapRowId(rowId)] = note
+        }
+      }
+
+      if (Object.keys(copiedDayNotes).length > 0) {
+        plannerNotes[targetDayKey] = copiedDayNotes
+      }
+    }
+
+    const plannerRowsByWeek = { ...state.plannerRowsByWeek }
+    if (copiedCustomRows.length > 0) {
+      plannerRowsByWeek[targetWeekKey] = copiedCustomRows
+    } else {
+      delete plannerRowsByWeek[targetWeekKey]
+    }
+
+    const shoppingPurchasesByWeek = { ...state.shoppingPurchasesByWeek }
+    delete shoppingPurchasesByWeek[targetWeekKey]
+
+    updateWithUndo(
+      {
+        ...state,
+        planner,
+        plannerNotes,
+        plannerRowsByWeek,
+        shoppingPurchasesByWeek,
+      },
+      `Copied ${formatRange(sourceWeekDates)}`,
+    )
+
+    setShowCopyWeek(false)
+    setCopySourceWeekKey('')
   }
 
   function handleDragStart(event: { active: { id: string | number } }) {
@@ -204,7 +362,7 @@ function App() {
       }
     }
 
-    update({ ...state, planner, plannerNotes })
+    updateWithUndo({ ...state, planner, plannerNotes }, 'Removed planned meal')
   }
 
   function addMealToSlot(day: string, rowId: string, meal: Meal) {
@@ -311,12 +469,12 @@ function App() {
       delete plannerRowsByWeek[weekKey]
     }
 
-    update({
+    updateWithUndo({
       ...state,
       planner,
       plannerRowsByWeek,
       plannerNotes,
-    })
+    }, `Removed ${row.label} row`)
   }
 
   function saveMeal(meal: Meal, oldId?: string) {
@@ -356,11 +514,13 @@ function App() {
       }
     }
 
-    update({
+    const deletedMeal = state.meals.find((meal) => meal.id === mealId)
+
+    updateWithUndo({
       ...state,
       meals: state.meals.filter((m) => m.id !== mealId),
       planner,
-    })
+    }, deletedMeal ? `Deleted ${deletedMeal.name}` : 'Deleted meal')
   }
 
   function toggleShopping(lineId: string) {
@@ -448,10 +608,12 @@ function App() {
   function deleteShoppingHistoryItem(id: string) {
     if (!state) return
 
-    update({
+    const deletedItem = state.shoppingHistory.find((item) => item.id === id)
+
+    updateWithUndo({
       ...state,
       shoppingHistory: state.shoppingHistory.filter((item) => item.id !== id),
-    })
+    }, deletedItem ? `Removed ${deletedItem.name} from history` : 'Removed history item')
   }
 
   function toggleManualShoppingItem(id: string) {
@@ -480,13 +642,15 @@ function App() {
   function deleteManualShoppingItem(id: string) {
     if (!state) return
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
-    update({
+    const deletedItem = current.find((item) => item.id === id)
+
+    updateWithUndo({
       ...state,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: current.filter((item) => item.id !== id),
       },
-    })
+    }, deletedItem ? `Removed ${deletedItem.name}` : 'Removed shopping item')
   }
 
   function clearCheckedShopping() {
@@ -496,14 +660,14 @@ function App() {
     const shoppingPurchasesByWeek = { ...state.shoppingPurchasesByWeek }
     delete shoppingPurchasesByWeek[shoppingWeekKey]
 
-    update({
+    updateWithUndo({
       ...state,
       shoppingPurchasesByWeek,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: current.map((item) => ({ ...item, checked: false })),
       },
-    })
+    }, 'Reset checked shopping items')
   }
 
   function clearWeek() {
@@ -527,12 +691,12 @@ function App() {
     const plannerRowsByWeek = { ...state.plannerRowsByWeek }
     delete plannerRowsByWeek[weekKey]
 
-    update({
+    updateWithUndo({
       ...state,
       planner,
       plannerRowsByWeek,
       plannerNotes,
-    })
+    }, `Cleared ${formatRange(getWeekDates(weekOffset))}`)
   }
 
   if (!storageReady || !state) {
@@ -563,6 +727,7 @@ function App() {
               updatePlannerNote={updatePlannerNote}
               addPlannerRow={addPlannerRow}
               removePlannerRow={removePlannerRow}
+              onCopyWeek={openCopyWeek}
               proteinCategories={state.proteinCategories}
             />
           )}
@@ -622,6 +787,72 @@ function App() {
               update({ ...state, proteinCategories: [...state.proteinCategories, category] })
             }
           />
+        )}
+
+        {showCopyWeek && (
+          <div className="modal-backdrop" onClick={() => setShowCopyWeek(false)}>
+            <div
+              className="modal copy-week-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="copy-week-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div>
+                  <div className="eyebrow">COPY WEEK</div>
+                  <h2 id="copy-week-title">Copy into {formatRange(weekDates)}</h2>
+                </div>
+                <button type="button" onClick={() => setShowCopyWeek(false)} aria-label="Close">×</button>
+              </div>
+
+              {copyableWeekKeys.length > 0 ? (
+                <>
+                  <label>
+                    Source week
+                    <select
+                      value={copySourceWeekKey}
+                      onChange={(event) => setCopySourceWeekKey(event.target.value)}
+                    >
+                      {copyableWeekKeys.map((weekKey) => {
+                        const dates = getWeekDatesForDateKey(weekKey)
+                        return (
+                          <option key={weekKey} value={weekKey}>
+                            {formatRange(dates)} · {dates[6].getFullYear()}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+
+                  <p className="copy-week-note">
+                    This replaces this week’s planned meals, notes, and custom rows. Generated shopping checkmarks are reset; manual shopping items are kept.
+                  </p>
+                </>
+              ) : (
+                <div className="copy-week-empty">There are no other populated weeks to copy.</div>
+              )}
+
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setShowCopyWeek(false)}>Cancel</button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!copySourceWeekKey}
+                  onClick={() => copyWeek(copySourceWeekKey)}
+                >
+                  Copy week
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {undoAction && (
+          <div className="undo-snackbar" role="status" aria-live="polite">
+            <span>{undoAction.message}</span>
+            <button type="button" onClick={undoLastAction}>Undo</button>
+          </div>
         )}
       </div>
       <DragOverlay>{activeMeal ? <MealCard meal={activeMeal} overlay ingredients={state.ingredients} proteinCategories={state.proteinCategories} /> : null}</DragOverlay>
@@ -701,6 +932,7 @@ function PlannerView({
   updatePlannerNote,
   addPlannerRow,
   removePlannerRow,
+  onCopyWeek,
   proteinCategories,
 }: {
   state: AppState
@@ -713,6 +945,7 @@ function PlannerView({
   updatePlannerNote: (day: string, rowId: string, note: string) => void
   addPlannerRow: (label: string) => void
   removePlannerRow: (rowId: string) => void
+  onCopyWeek: () => void
   proteinCategories: ProteinCategory[]
 }) {
   const [mealSearch, setMealSearch] = useState('')
@@ -743,10 +976,13 @@ function PlannerView({
           <div className="eyebrow">WEEKLY PLAN</div>
           <h2>{formatRange(weekDates)}</h2>
         </div>
-        <div className="week-controls">
-          <button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button>
-          <button onClick={() => setWeekOffset(0)}>Today</button>
-          <button onClick={() => setWeekOffset(weekOffset + 1)}>›</button>
+        <div className="planner-header-controls">
+          <button type="button" className="secondary copy-week-trigger" onClick={onCopyWeek}>Copy week</button>
+          <div className="week-controls">
+            <button onClick={() => setWeekOffset(weekOffset - 1)}>‹</button>
+            <button onClick={() => setWeekOffset(0)}>Today</button>
+            <button onClick={() => setWeekOffset(weekOffset + 1)}>›</button>
+          </div>
         </div>
       </div>
 
