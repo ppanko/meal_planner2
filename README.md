@@ -1,102 +1,65 @@
-# Meal Planner
+<p align="center">
+  <img src="public/icon.svg" width="88" alt="Meal Planner icon">
+</p>
 
-A mobile-first, local-only meal planner built with React and TypeScript.
+<h1 align="center">Meal Planner</h1>
 
-## Features
+<p align="center"><strong>Plan the week. Shop the list. Start cooking.</strong></p>
 
-- 7 × 3 weekly planner (Breakfast/Lunch/Dinner × Monday–Sunday)
-- Drag meals onto calendar cells
-- Tap a meal to put it in the next available slot
-- Double-click a planned meal to remove it
-- Meal library divided into breakfast, lunch, and dinner
-- Create and edit meals from ingredient lists
-- Create reusable ingredients
-- Automatic weekly shopping list with quantities combined
-- Check off shopping items
-- Week navigation
-- Persistent local data using IndexedDB
-- No backend, account, or cloud database
-- PWA/offline support
-- GitHub Pages deployment via GitHub Actions
+<p align="center">
+  A private, mobile-first home for meal plans, recipes, and the groceries that connect them.
+</p>
 
-## Local development on Linux
+## One simple flow
 
-Requirements: Node.js 22 or newer.
+| Plan | Shop | Cook |
+| --- | --- | --- |
+| Drag or tap meals into a flexible weekly calendar. | Get one combined list with the quantities worked out for you. | Open a focused recipe view with ingredients, notes, and instructions. |
+
+Meal Planner is built for the details of a real week: custom planner rows, reusable ingredients, one-off shopping items, store-order categories, purchase history, and the occasional need to buy milk twice.
+
+Your household shares one live plan across devices. The local cache keeps the app responsive and available when the connection is not.
+
+## Run it locally
+
+Requires Node.js 22 or newer and a Supabase project.
 
 ```bash
+git clone https://github.com/ppanko/meal_planner2.git
+cd meal_planner2
 npm install
+cp .env.example .secrets
 npm run dev
 ```
 
-Open the URL printed by Vite.
+Add your Supabase URL and publishable key to `.secrets`. Database setup and household-code enrollment are covered in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
-Production build:
+## Commands
 
-```bash
-npm run build
-npm run preview
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Typecheck and build for production |
+| `npm run preview` | Preview the production build |
+| `npm test` | Run the complete test suite |
+| `npm run test:watch` | Run tests while developing |
+| `npm run test:coverage` | Generate a coverage report |
+| `npm run typecheck` | Run strict TypeScript checks |
+
+## Under the hood
+
+React, TypeScript, Vite, Supabase, and `dnd-kit`. The test suite uses Vitest, Testing Library, jsdom, and an in-memory IndexedDB implementation.
+
+Planner data is cached in IndexedDB and synchronized through Supabase Realtime. Household access is protected by anonymous authentication, enrollment, and Row Level Security; the private household code is never bundled with the app.
+
+## Deploy
+
+The included GitHub Actions workflow tests, builds, and deploys `master` to GitHub Pages. Add these repository secrets before running it:
+
+```text
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+SUPABASE_STATE_ID
 ```
 
-## Testing
-
-The test suite uses Vitest, Testing Library, jsdom, and an in-memory IndexedDB implementation. Tests are colocated with the source files they cover.
-
-```bash
-npm test                # run the complete suite once
-npm run test:watch      # rerun affected tests while developing
-npm run test:coverage   # enforce coverage thresholds and write coverage/ reports
-npm run typecheck       # strict TypeScript check, including tests
-```
-
-The suite covers domain utilities, state migrations, local and Supabase persistence, realtime updates, feature controllers, authentication, UI interactions, and top-level application wiring. Supabase and browser boundaries are mocked; no live project or household code is needed to run tests.
-
-## GitHub Pages deployment
-
-1. Create a GitHub repository and push this project to the `main` branch.
-2. In GitHub, open **Settings → Pages**.
-3. Under **Build and deployment → Source**, select **GitHub Actions**.
-4. Push to `main` (or run the workflow manually).
-5. GitHub will publish the `dist/` directory.
-
-The Vite configuration uses a relative base, so the application works at a GitHub Pages project URL without changing the source code.
-
-## iPhone
-
-Open the GitHub Pages URL in Safari and use **Share → Add to Home Screen**. If iOS offers **Open as Web App**, enable it.
-
-The application stores its data in IndexedDB on the device. The GitHub Pages site only supplies the application files; meal data is not sent to a server.
-
-The service worker caches the application so it can continue to work when offline after it has been loaded once.
-
-## Data
-
-Data is local to the browser/device. Clearing the site's browser data will remove the stored meal planner data. The app also migrates data from the previous localStorage version if it finds it.
-
-
-## Developer configuration
-
-This build uses a local `.secrets` file instead of hard-coded values.
-
-```bash
-cp .secrets.example .secrets
-```
-
-Fill in `.secrets`, then run `npm run dev`. The file is gitignored.
-
-For GitHub Pages, configure the corresponding GitHub Actions repository secrets;
-the deployment workflow injects them automatically.
-
-### Node types for Vite config
-
-`vite.config.ts` reads `.secrets` at build time, so the project includes
-`@types/node` and enables Node types in `tsconfig.node.json`.
-
-
-## Authentication
-
-The current build uses **anonymous device enrollment with a household code**.
-It does not send emails.
-
-Run `supabase/setup.sql`, save the generated household access code, and enable
-**Allow anonymous sign-ins** in Supabase Authentication settings. Each device
-enters the code once; the session then persists locally.
+The PWA uses a relative base path, so it works from a GitHub Pages project URL without additional routing configuration.
