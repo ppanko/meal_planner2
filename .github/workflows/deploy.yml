@@ -38,7 +38,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          VITE_ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
           VITE_SUPABASE_STATE_ID: ${{ secrets.SUPABASE_STATE_ID }}
         run: npm run build
 

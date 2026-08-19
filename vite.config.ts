@@ -44,8 +44,6 @@ export default defineConfig(() => {
       localSecrets.VITE_SUPABASE_PUBLISHABLE_KEY ??
       process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
       '',
-    VITE_ALLOWED_EMAILS:
-      localSecrets.VITE_ALLOWED_EMAILS ?? process.env.VITE_ALLOWED_EMAILS ?? '',
     VITE_SUPABASE_STATE_ID:
       localSecrets.VITE_SUPABASE_STATE_ID ??
       process.env.VITE_SUPABASE_STATE_ID ??

@@ -1,29 +1,47 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { allowedEmails, supabase, supabaseConfigured } from './supabase'
+import { supabase, supabaseConfigured } from './supabase'
+
+async function checkEnrollment(session: Session | null): Promise<boolean> {
+  if (!session) return false
+
+  const { data, error } = await supabase.rpc('is_meal_planner_authorized')
+
+  if (error) {
+    console.warn('Could not check meal-planner enrollment.', error)
+    return false
+  }
+
+  return data === true
+}
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
+  const [enrolled, setEnrolled] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [accessCode, setAccessCode] = useState('')
   const [message, setMessage] = useState('')
-  const [signingIn, setSigningIn] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return
+    async function refresh(nextSession: Session | null) {
+      const isEnrolled = await checkEnrollment(nextSession)
 
-      setSession(data.session)
+      if (!mounted) return
+      setSession(nextSession)
+      setEnrolled(isEnrolled)
       setChecking(false)
+    }
+
+    void supabase.auth.getSession().then(({ data }) => {
+      void refresh(data.session)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-      setChecking(false)
+      void refresh(nextSession)
     })
 
     return () => {
@@ -32,49 +50,54 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const sessionEmail = session?.user.email?.trim().toLowerCase() ?? ''
-  const sessionAllowed =
-    Boolean(sessionEmail) &&
-    (allowedEmails.length === 0 || allowedEmails.includes(sessionEmail))
-
-  useEffect(() => {
-    if (session && !sessionAllowed) {
-      void supabase.auth.signOut()
-      setMessage('This email is not authorized for this meal planner.')
-    }
-  }, [session, sessionAllowed])
-
-  async function signIn(event: FormEvent) {
+  async function enrollDevice(event: FormEvent) {
     event.preventDefault()
+
+    const code = accessCode.trim()
+    if (!code || submitting) return
+
+    setSubmitting(true)
     setMessage('')
 
-    const normalizedEmail = email.trim().toLowerCase()
+    let activeSession = session
 
-    if (!normalizedEmail || !password) return
+    if (!activeSession) {
+      const { data, error } = await supabase.auth.signInAnonymously()
 
-    if (
-      allowedEmails.length > 0 &&
-      !allowedEmails.includes(normalizedEmail)
-    ) {
-      setMessage('This email is not authorized for this meal planner.')
+      if (error) {
+        setSubmitting(false)
+        setMessage(error.message)
+        return
+      }
+
+      activeSession = data.session
+      setSession(data.session)
+    }
+
+    if (!activeSession) {
+      setSubmitting(false)
+      setMessage('Could not create a device session.')
       return
     }
 
-    setSigningIn(true)
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password,
+    const { data, error } = await supabase.rpc('enroll_meal_planner_device', {
+      access_code: code,
     })
 
-    setSigningIn(false)
+    setSubmitting(false)
 
     if (error) {
-      setMessage('Unable to sign in. Check your email and password.')
+      setMessage(error.message)
       return
     }
 
-    setPassword('')
+    if (data !== true) {
+      setMessage('That household access code is not valid.')
+      return
+    }
+
+    setAccessCode('')
+    setEnrolled(true)
   }
 
   if (!supabaseConfigured) {
@@ -100,53 +123,42 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  if (session && sessionAllowed) {
+  if (session && enrolled) {
     return <>{children}</>
   }
 
   return (
     <div className="auth-screen">
-      <form className="auth-card" onSubmit={signIn}>
+      <form className="auth-card" onSubmit={enrollDevice}>
         <div className="eyebrow">HOUSEHOLD</div>
         <h1>Meal Planner</h1>
         <p>
-          Sign in once on this device. Your session will stay saved unless you
-          explicitly sign out or clear browser data.
+          Enter the household access code once on this device. No email or
+          password is required.
         </p>
 
         <label>
-          Email
+          Household code
           <input
-            type="email"
-            autoComplete="username"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
+            type="password"
+            autoComplete="off"
+            value={accessCode}
+            onChange={(event) => setAccessCode(event.target.value)}
+            placeholder="Household access code"
             required
             autoFocus
           />
         </label>
 
-        <label>
-          Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-
-        <button
-          className="primary auth-submit"
-          type="submit"
-          disabled={signingIn}
-        >
-          {signingIn ? 'Signing in…' : 'Sign in'}
+        <button className="primary auth-submit" type="submit" disabled={submitting}>
+          {submitting ? 'Connecting…' : 'Connect this device'}
         </button>
 
         {message && <div className="auth-message">{message}</div>}
+
+        <p className="auth-footnote">
+          This device stays connected as long as its browser storage is kept.
+        </p>
       </form>
     </div>
   )

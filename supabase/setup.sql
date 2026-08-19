@@ -1,44 +1,117 @@
--- Meal Planner shared state + two-person authorization.
+-- Meal Planner: anonymous device enrollment + shared state.
 --
--- This file contains NO email addresses or API keys.
--- Run it unchanged in the Supabase SQL Editor.
+-- Run this file unchanged in the Supabase SQL Editor.
 --
--- After running it, add the two permitted email addresses to
--- public.meal_planner_authorized_users using Supabase Table Editor:
+-- IMPORTANT:
+-- At the end, the script returns a random HOUSEHOLD ACCESS CODE the first
+-- time it is run. Save that code somewhere private. Each permitted device
+-- enters it once. The plaintext code is NOT stored in the database.
 --
---   Table Editor -> meal_planner_authorized_users -> Insert row
---
--- The frontend's VITE_ALLOWED_EMAILS setting is only a convenience check.
--- The database table below is the real server-side authorization boundary.
+-- Re-running this script preserves both the existing shared planner data
+-- and any already-enrolled devices.
 
-create table if not exists public.meal_planner_authorized_users (
-  email text primary key,
-  created_at timestamptz not null default now(),
-  constraint meal_planner_authorized_users_email_lowercase
-    check (email = lower(email))
+create extension if not exists pgcrypto with schema extensions;
+
+-- A single hashed household code. This table is not directly exposed.
+create table if not exists public.meal_planner_access (
+  id text primary key,
+  code_hash text not null,
+  created_at timestamptz not null default now()
 );
 
--- Do not expose the allowlist directly through the Data API.
-alter table public.meal_planner_authorized_users enable row level security;
-revoke all on table public.meal_planner_authorized_users from anon, authenticated;
+alter table public.meal_planner_access enable row level security;
+revoke all on table public.meal_planner_access from anon, authenticated;
 
+-- Devices/users that successfully supplied the household code.
+create table if not exists public.meal_planner_members (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  enrolled_at timestamptz not null default now()
+);
+
+alter table public.meal_planner_members enable row level security;
+revoke all on table public.meal_planner_members from anon, authenticated;
+
+-- Generate the household access code only if none exists yet.
+-- The SELECT at the bottom of this statement returns the plaintext code once.
+with generated as materialized (
+  select encode(extensions.gen_random_bytes(12), 'hex') as code
+),
+inserted as (
+  insert into public.meal_planner_access (id, code_hash)
+  select
+    'household',
+    encode(extensions.digest(code, 'sha256'), 'hex')
+  from generated
+  on conflict (id) do nothing
+  returning id
+)
+select code as household_access_code
+from generated
+where exists (select 1 from inserted);
+
+-- Server-side membership check used both by the client and RLS.
 create or replace function public.is_meal_planner_authorized()
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
-  select exists (
-    select 1
-    from public.meal_planner_authorized_users
-    where email = lower(coalesce((select auth.jwt()) ->> 'email', ''))
-  );
+  select
+    auth.uid() is not null
+    and exists (
+      select 1
+      from public.meal_planner_members
+      where user_id = auth.uid()
+    );
 $$;
 
 revoke all on function public.is_meal_planner_authorized() from public;
 grant execute on function public.is_meal_planner_authorized() to authenticated;
 
+-- Validate the household code and enroll the current anonymous/authenticated
+-- Supabase user. The submitted plaintext code is never stored.
+create or replace function public.enroll_meal_planner_device(access_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+declare
+  expected_hash text;
+  submitted_hash text;
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  select code_hash
+  into expected_hash
+  from public.meal_planner_access
+  where id = 'household';
+
+  if expected_hash is null then
+    return false;
+  end if;
+
+  submitted_hash := encode(extensions.digest(access_code, 'sha256'), 'hex');
+
+  if submitted_hash <> expected_hash then
+    return false;
+  end if;
+
+  insert into public.meal_planner_members (user_id)
+  values (auth.uid())
+  on conflict (user_id) do nothing;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.enroll_meal_planner_device(text) from public;
+grant execute on function public.enroll_meal_planner_device(text) to authenticated;
+
+-- Shared application state. Existing data is preserved.
 create table if not exists public.meal_planner_state (
   id text primary key,
   state jsonb not null,
@@ -50,6 +123,7 @@ grant select, insert, update on table public.meal_planner_state to authenticated
 
 alter table public.meal_planner_state enable row level security;
 
+-- Remove policies from the previous email-authorization version, if present.
 drop policy if exists "household can read meal planner" on public.meal_planner_state;
 drop policy if exists "household can create meal planner" on public.meal_planner_state;
 drop policy if exists "household can update meal planner" on public.meal_planner_state;
@@ -58,22 +132,22 @@ create policy "household can read meal planner"
 on public.meal_planner_state
 for select
 to authenticated
-using (public.is_meal_planner_authorized());
+using ((select public.is_meal_planner_authorized()));
 
 create policy "household can create meal planner"
 on public.meal_planner_state
 for insert
 to authenticated
-with check (public.is_meal_planner_authorized());
+with check ((select public.is_meal_planner_authorized()));
 
 create policy "household can update meal planner"
 on public.meal_planner_state
 for update
 to authenticated
-using (public.is_meal_planner_authorized())
-with check (public.is_meal_planner_authorized());
+using ((select public.is_meal_planner_authorized()))
+with check ((select public.is_meal_planner_authorized()));
 
--- Enable Postgres Changes realtime for the shared state table.
+-- Realtime support.
 do $$
 begin
   if not exists (

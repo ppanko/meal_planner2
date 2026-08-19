@@ -72,3 +72,18 @@ Fill in `.secrets`, then run `npm run dev`. The file is gitignored.
 
 For GitHub Pages, configure the corresponding GitHub Actions repository secrets;
 the deployment workflow injects them automatically.
+
+### Node types for Vite config
+
+`vite.config.ts` reads `.secrets` at build time, so the project includes
+`@types/node` and enables Node types in `tsconfig.node.json`.
+
+
+## Authentication
+
+The current build uses **anonymous device enrollment with a household code**.
+It does not send emails.
+
+Run `supabase/setup.sql`, save the generated household access code, and enable
+**Allow anonymous sign-ins** in Supabase Authentication settings. Each device
+enters the code once; the session then persists locally.

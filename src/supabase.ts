@@ -23,10 +23,5 @@ export const supabase = createClient(
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseKey)
 
-export const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS ?? '')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean)
-
 export const sharedStateId =
   import.meta.env.VITE_SUPABASE_STATE_ID?.trim() || 'household'
