@@ -16,6 +16,14 @@ Run the whole file.
 
 It preserves the existing `meal_planner_state` table/data.
 
+The setup also installs version-checked writes and a rolling history of the 50
+most recent confirmed states. Existing state begins at revision `0`; the next
+successful application save advances it normally.
+
+> Deploy the matching application build immediately after running this SQL.
+> The migration disables legacy direct browser writes so older builds cannot
+> bypass conflict protection.
+
 ### Save the generated household code
 
 The first time the script creates the access-code record, the SQL result contains:
@@ -87,6 +95,11 @@ Open the GitHub Pages app on that device and enter the same household access
 code once.
 
 That device then receives the same Supabase-backed planner state.
+
+Concurrent changes to different planner, meal, or shopping records are merged
+automatically. If two devices edit the same information, both versions remain
+available until someone chooses which overlap to keep. Offline changes are
+stored in IndexedDB and retried after the browser reconnects.
 
 ## Important behavior
 

@@ -12,6 +12,8 @@ import { useMealsController } from './meals/useMealsController'
 import { ShoppingView } from './shopping/ShoppingView'
 import { useShoppingController } from './shopping/useShoppingController'
 import { usePersistentAppState } from './state/usePersistentAppState'
+import { SyncConflictDialog } from './state/SyncConflictDialog'
+import { SyncStatusIndicator } from './state/SyncStatusIndicator'
 import { formatRange, getWeekDates, getWeekDatesForDateKey } from './utils/dates'
 
 function App() {
@@ -23,9 +25,15 @@ function App() {
     state,
     storageReady,
     undoAction,
+    syncStatus,
+    syncConflict,
+    conflictVisible,
     update,
     updateWithUndo,
     undoLastAction,
+    resolveConflict,
+    deferConflict,
+    reviewConflict,
   } = usePersistentAppState()
 
   const planner = usePlannerController({
@@ -63,8 +71,11 @@ function App() {
             <div className="eyebrow">PERSONAL</div>
             <h1>Meal Planner</h1>
           </div>
-          {view === 'planner' && <button className="text-button" onClick={planner.clearWeek}>Clear week</button>}
-          {view === 'shopping' && <button className="text-button" onClick={shopping.clearShoppingList}>Clear shopping list</button>}
+          <div className="topbar-actions">
+            <SyncStatusIndicator status={syncStatus} onReview={reviewConflict} />
+            {view === 'planner' && <button className="text-button" onClick={planner.clearWeek}>Clear week</button>}
+            {view === 'shopping' && <button className="text-button" onClick={shopping.clearShoppingList}>Clear shopping list</button>}
+          </div>
         </header>
 
         <main className="content">
@@ -229,6 +240,14 @@ function App() {
             <span>{undoAction.message}</span>
             <button type="button" onClick={undoLastAction}>Undo</button>
           </div>
+        )}
+
+        {conflictVisible && syncConflict && (
+          <SyncConflictDialog
+            conflict={syncConflict}
+            onResolve={resolveConflict}
+            onDefer={deferConflict}
+          />
         )}
       </div>
 

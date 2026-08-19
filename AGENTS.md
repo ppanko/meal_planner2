@@ -56,8 +56,10 @@ There is no lint script. For code changes, run the relevant focused tests while 
   - every controller or utility that reads, copies, deletes, or derives that field.
 - `normalizeState()` must continue accepting older and partially populated state. Do not assume newly added properties exist in IndexedDB or Supabase.
 - Keep updates immutable and route persisted changes through `update()` or `updateWithUndo()`. Use `updateWithUndo()` for user-visible destructive actions that should be reversible.
-- Supabase stores the entire state object in a single `meal_planner_state` row. Writes are last-write-wins; avoid extra saves and do not introduce mutations that can race with the realtime subscription.
-- Local persistence is intentionally written before remote persistence so the app remains usable during network failures. Preserve the IndexedDB/localStorage fallback behavior.
+- Supabase stores the entire state object in a versioned `meal_planner_state` row. All browser writes must use the compare-and-swap RPC; never reintroduce direct upserts or bypass revision checks.
+- Local sync persistence keeps the working state, last confirmed server state, revision, and replayable pending changes. Preserve that queue across reloads and network failures, and never replace it with an unversioned state-only save.
+- Realtime snapshots must be rebased beneath pending local changes. Ignore older revisions and do not let an echo or remote update silently discard the local queue.
+- Undo must reverse only the affected local delta through the merge layer; restoring an old whole-state snapshot directly can erase newer changes from another device.
 - Planner day keys use local `YYYY-MM-DD` strings from `dateKey()`. Weeks start on Monday, and week-scoped records use the Monday key.
 - Planner cells contain arrays of meal IDs and are limited to three meals. Preserve this invariant in UI actions, drag-and-drop code, copies, and migrations.
 - The shopping list is derived from planned meal ingredients. Purchased quantities, manual items, notes, custom rows, and history have separate week/global storage; do not conflate generated and manual items.

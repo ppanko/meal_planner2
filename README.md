@@ -33,7 +33,7 @@
 
 Meal Planner is built for the details of a real week: custom planner rows, reusable ingredients, one-off shopping items, store-order categories, purchase history, and the occasional need to buy milk twice.
 
-Your household shares one live plan across devices. The local cache keeps the app responsive and available when the connection is not.
+Your household shares one live plan across devices. Versioned synchronization prevents stale devices from silently overwriting newer changes, while a durable local queue keeps offline edits safe until they can sync.
 
 ## Run it locally
 
@@ -65,7 +65,7 @@ Add your Supabase URL and publishable key to `.secrets`. Database setup and hous
 
 React, TypeScript, Vite, Supabase, and `dnd-kit`. The test suite uses Vitest, Testing Library, jsdom, and an in-memory IndexedDB implementation.
 
-Planner data is cached in IndexedDB and synchronized through Supabase Realtime. Household access is protected by anonymous authentication, enrollment, and Row Level Security; the private household code is never bundled with the app.
+Planner data is cached in IndexedDB and synchronized through version-checked Supabase writes and Realtime updates. Conflicting edits are merged when safe, unresolved overlaps stay on the device for review, and recent server revisions are retained for recovery. Household access is protected by anonymous authentication, enrollment, and Row Level Security; the private household code is never bundled with the app.
 
 ## Deploy
 

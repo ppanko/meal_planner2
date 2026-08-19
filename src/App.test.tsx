@@ -64,9 +64,15 @@ beforeEach(() => {
     state,
     storageReady: true,
     undoAction: null,
+    syncStatus: 'saved',
+    syncConflict: null,
+    conflictVisible: false,
     update: vi.fn(),
     updateWithUndo: vi.fn(),
     undoLastAction: vi.fn(),
+    resolveConflict: vi.fn(),
+    deferConflict: vi.fn(),
+    reviewConflict: vi.fn(),
   }
   mocks.planner = {
     sensors: [],
@@ -186,7 +192,11 @@ describe('App', () => {
     }
     mocks.persistent = {
       ...mocks.persistent,
-      undoAction: { message: 'Deleted meal', state: mocks.persistent.state },
+      undoAction: {
+        message: 'Deleted meal',
+        beforeState: mocks.persistent.state,
+        afterState: mocks.persistent.state,
+      },
     }
     const user = userEvent.setup()
     render(<App />)
@@ -197,5 +207,23 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(mocks.persistent.undoLastAction).toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /Shopping/ }).querySelector('i')).toBeInTheDocument()
+  })
+
+  it('shows sync state and delegates compact conflict resolution', async () => {
+    mocks.persistent = {
+      ...mocks.persistent,
+      syncStatus: 'conflict',
+      syncConflict: { paths: ['meals[tacos].name'], canSaveMealCopy: true },
+      conflictVisible: true,
+    }
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Review changes' })).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog', { name: 'Changes overlap' })).toHaveTextContent('Meal field: name')
+    await user.click(screen.getByRole('button', { name: 'Save mine as a copy' }))
+    expect(mocks.persistent.resolveConflict).toHaveBeenCalledWith('copy')
+    await user.click(screen.getByRole('button', { name: 'Decide later' }))
+    expect(mocks.persistent.deferConflict).toHaveBeenCalled()
   })
 })
