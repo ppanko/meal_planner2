@@ -19,6 +19,7 @@ Meal Planner is a mobile-first React 19 + TypeScript PWA built with Vite. It man
 - `src/styles.css`: global styles and responsive breakpoints.
 - `public/`: web manifest, icons, and network-first service worker.
 - `supabase/setup.sql`: database schema, enrollment RPCs, RLS policies, and realtime setup.
+- `supabase/migrations/`: immutable, incremental production database changes.
 - `.github/workflows/deploy.yml`: GitHub Pages build and deployment from `master`.
 
 ## Setup and commands
@@ -102,6 +103,8 @@ Choose checks relevant to the change, including both desktop and a narrow mobile
 - Treat `SUPABASE_SETUP.md` and `supabase/setup.sql` as the source of truth for the current household-code flow. `.env.example` contains remnants of the older email allow-list configuration; do not reintroduce that flow unless explicitly requested.
 - Authorization must be enforced by database RLS/RPCs, never only by browser code. The publishable key may be public; the household code must not be embedded in the bundle.
 - Preserve existing shared state and enrolled devices when editing `supabase/setup.sql`; setup should remain safe to rerun.
+- Add schema changes as new timestamped files in `supabase/migrations/`; never edit a migration after deployment. Keep `supabase/setup.sql` current as the fresh-project bootstrap.
+- The Pages release applies pending migrations only after tests and a successful build, then deploys the matching frontend. Feature branches must not mutate the production database.
 - If changing required Vite variables, update `vite.config.ts`, `src/vite-env.d.ts`, `.secrets.example`, the deployment workflow, and setup documentation together.
 - Vite uses `base: './'` for GitHub Pages project URLs. Do not change it without validating asset, manifest, and service-worker paths.
 

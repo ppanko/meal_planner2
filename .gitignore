@@ -10,3 +10,4 @@ coverage/
 # Local Supabase/developer configuration
 .secrets
 .env.local
+supabase/.temp/
