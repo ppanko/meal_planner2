@@ -47,11 +47,12 @@ describe('upsertShoppingHistory', () => {
     vi.setSystemTime(new Date('2026-08-19T12:00:00.000Z'))
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000001')
 
-    expect(upsertShoppingHistory([], '  Apples ', 'produce')).toEqual([{
+    expect(upsertShoppingHistory([], '  Apples ', 'produce', 'apples')).toEqual([{
       id: '00000000-0000-4000-8000-000000000001',
       name: 'Apples',
       lastPurchasedAt: '2026-08-19T12:00:00.000Z',
       shoppingCategoryId: 'produce',
+      ingredientId: 'apples',
     }])
   })
 
@@ -63,8 +64,8 @@ describe('upsertShoppingHistory', () => {
       { id: 'eggs-id', name: 'Eggs', lastPurchasedAt: '2026-01-02T00:00:00.000Z', shoppingCategoryId: null },
     ]
 
-    expect(upsertShoppingHistory(history, ' milk ', 'dairy')).toEqual([
-      { id: 'milk-id', name: 'milk', lastPurchasedAt: '2026-08-19T12:00:00.000Z', shoppingCategoryId: 'dairy' },
+    expect(upsertShoppingHistory(history, ' milk ', 'dairy', 'milk')).toEqual([
+      { id: 'milk-id', name: 'milk', lastPurchasedAt: '2026-08-19T12:00:00.000Z', shoppingCategoryId: 'dairy', ingredientId: 'milk' },
       history[1],
     ])
   })
@@ -86,6 +87,7 @@ describe('buildShoppingList', () => {
     expect(result.find(({ ingredientId }) => ingredientId === 'ground-beef')).toMatchObject({
       lineId: 'outstanding:ground-beef',
       quantity: 3,
+      totalQuantity: 3,
       checked: false,
     })
     expect(result.find(({ ingredientId }) => ingredientId === 'tomatoes')).toMatchObject({
@@ -106,8 +108,8 @@ describe('buildShoppingList', () => {
     })
 
     expect(result.filter(({ ingredientId }) => ingredientId === 'ground-beef')).toEqual([
-      expect.objectContaining({ lineId: 'outstanding:ground-beef', quantity: 0.75, checked: false }),
-      expect.objectContaining({ lineId: 'purchased:ground-beef', quantity: 0.25, checked: true }),
+      expect.objectContaining({ lineId: 'outstanding:ground-beef', quantity: 0.75, totalQuantity: 1, checked: false }),
+      expect.objectContaining({ lineId: 'purchased:ground-beef', quantity: 0.25, totalQuantity: 1, checked: true }),
     ])
     expect(result.filter(({ ingredientId }) => ingredientId === 'tortillas')).toEqual([
       expect.objectContaining({ lineId: 'purchased:tortillas', quantity: 8, checked: true }),

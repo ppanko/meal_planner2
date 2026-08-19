@@ -9,15 +9,28 @@ const ingredients: Ingredient[] = [
 
 describe('shopping view model', () => {
   it('combines, sorts, and groups meal and manual items without changing their identity', () => {
-    const shopping: ShoppingItem[] = [{ lineId: 'meal-milk', ingredientId: 'milk', name: 'Milk', quantity: 2, unit: 'cup', checked: false, shoppingCategoryId: 'dairy' }]
+    const shopping: ShoppingItem[] = [{ lineId: 'meal-milk', ingredientId: 'milk', name: 'Milk', quantity: 2, totalQuantity: 4, unit: 'cup', checked: false, shoppingCategoryId: 'dairy' }]
     const manual: ManualShoppingItem[] = [{ id: 'bread', name: 'Bread', checked: true, shoppingCategoryId: 'missing' }]
-    const combined = combineShoppingItems(shopping, manual)
+    const combined = combineShoppingItems(shopping, manual, ingredients)
 
     expect(combined.map(({ kind, name }) => [kind, name])).toEqual([['manual', 'Bread'], ['meal', 'Milk']])
+    expect(combined[1]).toMatchObject({ kind: 'meal', quantity: 2, totalQuantity: 4 })
     expect(groupShoppingItems(combined, [{ id: 'dairy', name: 'Dairy' }])).toEqual([
       expect.objectContaining({ id: 'dairy', items: [expect.objectContaining({ id: 'meal-milk' })] }),
       expect.objectContaining({ id: '__uncategorized__', items: [expect.objectContaining({ id: 'bread' })] }),
     ])
+  })
+
+  it('keeps a custom item separate from a same-name meal ingredient', () => {
+    const combined = combineShoppingItems(
+      [{ lineId: 'meal-milk', ingredientId: 'milk', name: 'Milk', quantity: 2, unit: 'cup', checked: false }],
+      [{ id: 'extra-milk', name: 'Milk', checked: false, ingredientId: 'milk', shoppingCategoryId: 'aisle' }],
+      ingredients,
+    )
+
+    expect(combined).toHaveLength(2)
+    expect(combined.map(({ kind }) => kind)).toEqual(['meal', 'manual'])
+    expect(combined[1]).toMatchObject({ ingredientId: 'milk', categoryId: 'dairy' })
   })
 
   it('prioritizes prefix suggestions, deduplicates names, and excludes needed items', () => {

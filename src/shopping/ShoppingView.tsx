@@ -35,13 +35,23 @@ export function ShoppingView(props: ShoppingViewProps) {
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [itemSearch, setItemSearch] = useState('')
 
-  const items = useMemo(() => combineShoppingItems(props.shopping, props.manualItems), [props.shopping, props.manualItems])
+  const items = useMemo(
+    () => combineShoppingItems(props.shopping, props.manualItems, props.ingredients),
+    [props.shopping, props.manualItems, props.ingredients],
+  )
   const toBuyItems = items.filter((item) => !item.checked)
-  const neededNames = new Set(toBuyItems.map((item) => item.name.trim().toLowerCase()))
+  const manualNeededNames = useMemo(
+    () => new Set(
+      props.manualItems
+        .filter((item) => !item.checked)
+        .map((item) => item.name.trim().toLowerCase()),
+    ),
+    [props.manualItems],
+  )
   const filteredHistory = useMemo(() => filterShoppingHistory(props.history, historySearch), [props.history, historySearch])
   const suggestions = useMemo(
-    () => getShoppingSuggestions(newItem, props.ingredients, props.history, neededNames),
-    [newItem, props.ingredients, props.history, items],
+    () => getShoppingSuggestions(newItem, props.ingredients, props.history, manualNeededNames),
+    [newItem, props.ingredients, props.history, manualNeededNames],
   )
   const categoryItems = useMemo(
     () => buildCategoryItems(props.ingredients, props.manualItems, itemSearch),
@@ -84,7 +94,7 @@ export function ShoppingView(props: ShoppingViewProps) {
             </>
           )}
         </div>
-        <ShoppingHistory history={filteredHistory} totalCount={props.history.length} search={historySearch} onSearchChange={setHistorySearch} neededNames={neededNames} onAdd={props.onAddHistory} onDelete={props.onDeleteHistory} />
+        <ShoppingHistory history={filteredHistory} totalCount={props.history.length} search={historySearch} onSearchChange={setHistorySearch} neededNames={manualNeededNames} onAdd={props.onAddHistory} onDelete={props.onDeleteHistory} />
       </div>
       {showCategoryManager && (
         <ShoppingCategoryDialog

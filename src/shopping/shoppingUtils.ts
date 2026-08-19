@@ -35,6 +35,7 @@ export function upsertShoppingHistory(
   history: ShoppingHistoryItem[],
   name: string,
   shoppingCategoryId: string | null = null,
+  ingredientId: string | null = null,
 ): ShoppingHistoryItem[] {
   const normalized = name.trim().toLowerCase()
   if (!normalized) return history
@@ -45,7 +46,7 @@ export function upsertShoppingHistory(
   if (existing) {
     return history.map((item) =>
       item.id === existing.id
-        ? { ...item, name: name.trim(), lastPurchasedAt: now, shoppingCategoryId }
+        ? { ...item, name: name.trim(), lastPurchasedAt: now, shoppingCategoryId, ingredientId }
         : item,
     )
   }
@@ -57,6 +58,7 @@ export function upsertShoppingHistory(
       name: name.trim(),
       lastPurchasedAt: now,
       shoppingCategoryId,
+      ingredientId,
     },
   ]
 }
@@ -92,6 +94,7 @@ export function buildShoppingList(
         name: ingredient.name,
         unit: ingredient.unit,
         quantity: purchasedQuantity,
+        totalQuantity: requiredQuantity || purchasedQuantity,
         checked: true,
         shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
       })
@@ -104,6 +107,7 @@ export function buildShoppingList(
         name: ingredient.name,
         unit: ingredient.unit,
         quantity: outstandingQuantity,
+        totalQuantity: requiredQuantity,
         checked: false,
         shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
       })

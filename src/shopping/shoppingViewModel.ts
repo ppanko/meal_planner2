@@ -5,6 +5,7 @@ import type {
   ShoppingHistoryItem,
   ShoppingItem,
 } from '../types'
+import { findIngredientByName } from './ingredientCatalog'
 
 export type CombinedShoppingItem =
   | {
@@ -15,6 +16,7 @@ export type CombinedShoppingItem =
       checked: boolean
       unit: string
       quantity: number
+      totalQuantity: number
       categoryId: string | null
     }
   | {
@@ -45,6 +47,7 @@ export type CategoryItem = {
 export function combineShoppingItems(
   shopping: ShoppingItem[],
   manualItems: ManualShoppingItem[],
+  ingredients: Ingredient[],
 ): CombinedShoppingItem[] {
   const mealItems: CombinedShoppingItem[] = shopping.map((item) => ({
     kind: 'meal',
@@ -54,18 +57,24 @@ export function combineShoppingItems(
     checked: item.checked,
     unit: item.unit,
     quantity: item.quantity,
+    totalQuantity: item.totalQuantity ?? item.quantity,
     categoryId: item.shoppingCategoryId ?? null,
   }))
-  const manual: CombinedShoppingItem[] = manualItems.map((item) => ({
-    kind: 'manual',
-    id: item.id,
-    name: item.name,
-    checked: item.checked,
-    ingredientId: item.ingredientId ?? null,
-    unit: item.unit ?? '',
-    quantity: item.quantity ?? null,
-    categoryId: item.shoppingCategoryId ?? null,
-  }))
+  const manual: CombinedShoppingItem[] = manualItems.map((item) => {
+    const ingredient = item.ingredientId
+      ? ingredients.find((candidate) => candidate.id === item.ingredientId)
+      : findIngredientByName(ingredients, item.name)
+    return {
+      kind: 'manual',
+      id: item.id,
+      name: item.name,
+      checked: item.checked,
+      ingredientId: ingredient?.id ?? item.ingredientId ?? null,
+      unit: item.unit ?? ingredient?.unit ?? '',
+      quantity: item.quantity ?? null,
+      categoryId: ingredient?.shoppingCategoryId ?? item.shoppingCategoryId ?? null,
+    }
+  })
 
   return [...mealItems, ...manual].sort((a, b) => a.name.localeCompare(b.name))
 }

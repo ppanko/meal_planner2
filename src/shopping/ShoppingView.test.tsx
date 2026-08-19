@@ -71,10 +71,13 @@ describe('ShoppingView', () => {
       screen.getByRole('button', { name: 'Delete Bagels' }),
     )
 
-    await user.click(screen.getByLabelText('Mark Eggs purchased'))
+    expect(screen.getByText('Eggs').closest('.shopping-item'))
+      .toHaveTextContent('2 each · meal plan')
+
+    await user.click(screen.getByLabelText('Mark Eggs from meal plan purchased'))
     expect(callbacks.onToggle).toHaveBeenCalledWith('outstanding:eggs')
 
-    await user.click(screen.getByLabelText('Mark Bagels purchased'))
+    await user.click(screen.getByLabelText('Mark manually added Bagels purchased'))
     await user.click(screen.getByRole('button', { name: 'Add Milk again' }))
     await user.click(screen.getByRole('button', { name: 'Delete Bagels' }))
     expect(callbacks.onToggleManual).toHaveBeenCalledWith('manual')
@@ -102,7 +105,7 @@ describe('ShoppingView', () => {
     expect(callbacks.onAddManual).toHaveBeenCalledWith('Milk')
 
     await user.type(addInput, 'egg')
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Eggs/ })).toBeInTheDocument()
     await user.clear(addInput)
     await user.type(addInput, '  Apples  ')
     await user.click(screen.getByRole('button', { name: 'Add' }))
@@ -131,6 +134,39 @@ describe('ShoppingView', () => {
 
     const historyRow = screen.getAllByText('Bagels').find((element) => element.closest('.history-row'))!.closest('.history-row') as HTMLElement
     expect(within(historyRow).getByRole('button', { name: 'On list' })).toBeDisabled()
+  })
+
+  it('keeps meal-derived and separately added copies on distinct rows', () => {
+    const callbacks = props()
+    render(<ShoppingView
+      {...callbacks}
+      shopping={[{
+        lineId: 'outstanding:milk',
+        ingredientId: 'milk',
+        name: 'Milk',
+        unit: 'cup',
+        quantity: 3,
+        totalQuantity: 3,
+        checked: false,
+        shoppingCategoryId: 'dairy',
+      }]}
+      manualItems={[{
+        id: 'extra-milk',
+        name: 'Milk',
+        checked: false,
+        ingredientId: 'milk',
+        quantity: 1,
+        unit: 'cup',
+        shoppingCategoryId: 'dairy',
+      }]}
+    />)
+
+    const milkRows = screen.getAllByText('Milk').map((name) => name.closest('.shopping-item') as HTMLElement)
+    expect(milkRows).toHaveLength(2)
+    expect(milkRows.find((row) => row.classList.contains('meal-shopping-item')))
+      .toHaveTextContent('3 cup · meal plan')
+    expect(milkRows.find((row) => row.classList.contains('manual-shopping-item')))
+      .toHaveTextContent('Added separately')
   })
 
   it('supports pointer selection, reverse keyboard navigation, and dismissal', async () => {

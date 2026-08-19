@@ -523,16 +523,33 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 }
 
 .shopping-item-toggle .checkmark,
-.shopping-item-toggle .shopping-name {
+.shopping-item-toggle .shopping-item-copy {
   grid-column: auto;
 }
 
-.shopping-item-toggle .shopping-name {
+.shopping-item-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.shopping-item-copy .shopping-name {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.shopping-item-copy small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.manual-shopping-item .shopping-item-copy small { font-style: italic; }
 
 .shopping-item-toggle:has(input:focus-visible) .checkmark {
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -600,6 +617,7 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .shopping-item-toggle { gap: 9px; }
   .shopping-item-actions { gap: 4px; }
   .shopping-add-again { padding: 5px 6px; }
+  .shopping-item-copy { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
 
 /* Planner slot notes */

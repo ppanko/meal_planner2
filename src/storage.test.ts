@@ -141,7 +141,7 @@ describe('normalizeState', () => {
     expect(result.ingredients.map(({ shoppingCategoryId }) => shoppingCategoryId)).toEqual(['custom', null])
     expect(result.manualShoppingItems['2026-08-17'].map(({ shoppingCategoryId }) => shoppingCategoryId))
       .toEqual(['custom', null])
-    expect(result.shoppingHistory[0].shoppingCategoryId).toBeNull()
+    expect(result.shoppingHistory[0]).toMatchObject({ ingredientId: 'a', shoppingCategoryId: 'custom' })
   })
 
   it('normalizes optional links and quantities for manually added shopping items', () => {
@@ -156,7 +156,50 @@ describe('normalizeState', () => {
     })
 
     expect(result.manualShoppingItems['2026-08-17'][0]).toMatchObject({ ingredientId: 'milk', quantity: 2, unit: 'cup' })
-    expect(result.manualShoppingItems['2026-08-17'][1]).toMatchObject({ ingredientId: null, quantity: undefined, unit: undefined })
+    expect(result.manualShoppingItems['2026-08-17'][1]).toMatchObject({ ingredientId: 'other', quantity: undefined, unit: undefined })
+    expect(result.ingredients).toContainEqual({
+      id: 'other',
+      name: 'Other',
+      unit: 'each',
+      proteinCategoryId: null,
+      shoppingCategoryId: null,
+    })
+  })
+
+  it('migrates manual and history-only items into one durable ingredient catalog', () => {
+    const result = normalizeState({
+      ingredients: [],
+      manualShoppingItems: {
+        '2026-08-17': [{
+          id: 'manual-sweet-potatoes',
+          name: 'Sweet potatoes',
+          checked: false,
+          shoppingCategoryId: 'produce',
+        }],
+      },
+      shoppingHistory: [{
+        id: 'history-sweet-potatoes',
+        name: ' sweet potatoes ',
+        lastPurchasedAt: '2026-08-01',
+        shoppingCategoryId: 'produce',
+      }],
+    })
+
+    expect(result.ingredients).toEqual([{
+      id: 'sweet-potatoes',
+      name: 'Sweet potatoes',
+      unit: 'each',
+      proteinCategoryId: null,
+      shoppingCategoryId: 'produce',
+    }])
+    expect(result.manualShoppingItems['2026-08-17'][0]).toMatchObject({
+      ingredientId: 'sweet-potatoes',
+      shoppingCategoryId: 'produce',
+    })
+    expect(result.shoppingHistory[0]).toMatchObject({
+      ingredientId: 'sweet-potatoes',
+      shoppingCategoryId: 'produce',
+    })
   })
 
   it('does not share mutable seed arrays across normalized states', () => {

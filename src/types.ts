@@ -65,6 +65,7 @@ export type ShoppingItem = {
   name: string
   unit: string
   quantity: number
+  totalQuantity?: number
   checked: boolean
   shoppingCategoryId?: string | null
 }
@@ -74,6 +75,7 @@ export type ShoppingHistoryItem = {
   name: string
   lastPurchasedAt: string
   shoppingCategoryId?: string | null
+  ingredientId?: string | null
 }
 export type AppState = {
   ingredients: Ingredient[]

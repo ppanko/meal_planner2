@@ -1,5 +1,6 @@
 import { seedProteinCategories, seedState } from '../data'
 import { normalizeRecipeUrl } from '../meals/recipeDetails'
+import { ensureCatalogIngredient, findIngredientByName } from '../shopping/ingredientCatalog'
 import { defaultShoppingCategories } from '../types'
 import type { AppState, Ingredient, Meal, ShoppingCategory } from '../types'
 
@@ -46,7 +47,7 @@ export function normalizeState(state: Partial<AppState>): AppState {
   const { shoppingCategories, shoppingCategoryOrder } = normalizeShoppingCategories(state)
   const shoppingCategoryIds = new Set(shoppingCategories.map((category) => category.id))
   const legacyIngredientProteinById: Record<string, string | null> = { chicken: 'chicken', 'ground-beef': 'beef' }
-  const ingredients = (state.ingredients ?? seed.ingredients).map((ingredient) => {
+  let ingredients: Ingredient[] = (state.ingredients ?? seed.ingredients).map((ingredient) => {
     const legacyIngredient = ingredient as Ingredient & { proteinCategoryId?: string | null; shoppingCategoryId?: string | null }
     const requestedId = legacyIngredient.proteinCategoryId ?? legacyIngredientProteinById[ingredient.id] ?? null
     const requestedShoppingCategoryId = legacyIngredient.shoppingCategoryId ?? null
@@ -56,6 +57,43 @@ export function normalizeState(state: Partial<AppState>): AppState {
       shoppingCategoryId: requestedShoppingCategoryId && shoppingCategoryIds.has(requestedShoppingCategoryId) ? requestedShoppingCategoryId : null,
     }
   })
+  const rawManualShoppingItems = Object.fromEntries(
+    Object.entries(state.manualShoppingItems ?? {}).map(([weekKey, items]) => [weekKey, items.map((item) => ({
+      ...item,
+      quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : undefined,
+      unit: typeof item.unit === 'string' && item.unit.trim() ? item.unit.trim() : undefined,
+      shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
+    }))]),
+  )
+  const rawShoppingHistory = (state.shoppingHistory ?? []).map((item) => ({
+    ...item,
+    shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
+  }))
+
+  function linkCatalogItem(name: string, ingredientId: string | null | undefined, categoryId: string | null | undefined) {
+    let ingredient = ingredientId
+      ? ingredients.find((item) => item.id === ingredientId)
+      : findIngredientByName(ingredients, name)
+
+    if (!ingredient) {
+      const result = ensureCatalogIngredient(ingredients, name, categoryId ?? null)
+      ingredients = result.ingredients
+      ingredient = result.ingredient
+    } else if (!ingredient.shoppingCategoryId && categoryId) {
+      const categorizedIngredient = { ...ingredient, shoppingCategoryId: categoryId }
+      ingredients = ingredients.map((item) => item.id === categorizedIngredient.id ? categorizedIngredient : item)
+      ingredient = categorizedIngredient
+    }
+
+    return ingredient
+  }
+
+  for (const items of Object.values(rawManualShoppingItems)) {
+    for (const item of items) linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+  }
+  for (const item of rawShoppingHistory) {
+    linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+  }
   const legacyProteinToId: Record<string, string> = {
     Chicken: 'chicken', Beef: 'beef', Seafood: 'seafood', Pork: 'pork', None: 'none', Lamb: 'lamb',
   }
@@ -93,18 +131,23 @@ export function normalizeState(state: Partial<AppState>): AppState {
     }
   })
   const manualShoppingItems = Object.fromEntries(
-    Object.entries(state.manualShoppingItems ?? {}).map(([weekKey, items]) => [weekKey, items.map((item) => ({
-      ...item,
-      ingredientId: item.ingredientId && ingredients.some((ingredient) => ingredient.id === item.ingredientId) ? item.ingredientId : null,
-      quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : undefined,
-      unit: typeof item.unit === 'string' && item.unit.trim() ? item.unit.trim() : undefined,
-      shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
-    }))]),
+    Object.entries(rawManualShoppingItems).map(([weekKey, items]) => [weekKey, items.map((item) => {
+      const ingredient = linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+      return {
+        ...item,
+        ingredientId: ingredient.id,
+        shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+      }
+    })]),
   )
-  const shoppingHistory = (state.shoppingHistory ?? []).map((item) => ({
-    ...item,
-    shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
-  }))
+  const shoppingHistory = rawShoppingHistory.map((item) => {
+    const ingredient = linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+    return {
+      ...item,
+      ingredientId: ingredient.id,
+      shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+    }
+  })
 
   return {
     ingredients,

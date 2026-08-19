@@ -3,6 +3,7 @@ import { defaultShoppingCategories } from '../types'
 import type { AppState, ManualShoppingItem, ShoppingCategory } from '../types'
 import { dateKey } from '../utils/dates'
 import { slug } from '../utils/text'
+import { ensureCatalogIngredient } from './ingredientCatalog'
 import {
   buildShoppingList,
   buildRequiredShoppingQuantities,
@@ -169,12 +170,13 @@ export function useShoppingController({
               state.shoppingHistory,
               ingredient.name,
               ingredient.shoppingCategoryId ?? null,
+              ingredient.id,
             )
           : state.shoppingHistory,
     })
   }
 
-  function addManualShoppingItem(name: string) {
+  function addCatalogShoppingItem(name: string, shoppingCategoryId: string | null = null) {
     if (!state) return
     const trimmed = name.trim()
     if (!trimmed) return
@@ -183,22 +185,22 @@ export function useShoppingController({
     const normalized = trimmed.toLowerCase()
     if (current.some((item) => !item.checked && item.name.trim().toLowerCase() === normalized)) return
 
-    const ingredient = state.ingredients.find(
-      (item) => item.name.trim().toLowerCase() === normalized,
-    )
+    const catalog = ensureCatalogIngredient(state.ingredients, trimmed, shoppingCategoryId)
+    const ingredient = catalog.ingredient
 
     const item: ManualShoppingItem = {
       id: crypto.randomUUID(),
       name: trimmed,
       checked: false,
-      shoppingCategoryId: ingredient?.shoppingCategoryId ?? null,
-      ingredientId: ingredient?.id ?? null,
-      quantity: ingredient ? 1 : undefined,
-      unit: ingredient?.unit,
+      shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+      ingredientId: ingredient.id,
+      quantity: 1,
+      unit: ingredient.unit,
     }
 
     update({
       ...state,
+      ingredients: catalog.ingredients,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: [...current, item],
@@ -206,40 +208,12 @@ export function useShoppingController({
     })
   }
 
+  function addManualShoppingItem(name: string) {
+    addCatalogShoppingItem(name)
+  }
+
   function addHistoryItemToShopping(name: string, shoppingCategoryId: string | null = null) {
-    if (!state) return
-
-    const trimmed = name.trim()
-    if (!trimmed) return
-
-    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
-    const normalized = trimmed.toLowerCase()
-    const alreadyNeeded = current.some(
-      (item) => !item.checked && item.name.trim().toLowerCase() === normalized,
-    )
-    if (alreadyNeeded) return
-
-    const ingredient = state.ingredients.find(
-      (item) => item.name.trim().toLowerCase() === normalized,
-    )
-
-    const item: ManualShoppingItem = {
-      id: crypto.randomUUID(),
-      name: trimmed,
-      checked: false,
-      shoppingCategoryId: ingredient?.shoppingCategoryId ?? shoppingCategoryId ?? null,
-      ingredientId: ingredient?.id ?? null,
-      quantity: ingredient ? 1 : undefined,
-      unit: ingredient?.unit,
-    }
-
-    update({
-      ...state,
-      manualShoppingItems: {
-        ...state.manualShoppingItems,
-        [shoppingWeekKey]: [...current, item],
-      },
-    })
+    addCatalogShoppingItem(name, shoppingCategoryId)
   }
 
   function setShoppingItemCategory(
@@ -252,7 +226,11 @@ export function useShoppingController({
     const validCategoryIds = new Set(getOrderedShoppingCategories(state).map((category) => category.id))
     const nextCategoryId = categoryId && validCategoryIds.has(categoryId) ? categoryId : null
     const manualIdSet = new Set(manualIds)
-    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    const selectedNames = new Set(
+      (state.manualShoppingItems[shoppingWeekKey] ?? [])
+        .filter((item) => manualIdSet.has(item.id))
+        .map((item) => item.name.trim().toLowerCase()),
+    )
 
     update({
       ...state,
@@ -261,12 +239,22 @@ export function useShoppingController({
           ? { ...ingredient, shoppingCategoryId: nextCategoryId }
           : ingredient,
       ),
-      manualShoppingItems: {
-        ...state.manualShoppingItems,
-        [shoppingWeekKey]: current.map((item) =>
-          manualIdSet.has(item.id) ? { ...item, shoppingCategoryId: nextCategoryId } : item,
-        ),
-      },
+      manualShoppingItems: Object.fromEntries(
+        Object.entries(state.manualShoppingItems).map(([weekKey, items]) => [
+          weekKey,
+          items.map((item) =>
+            (ingredientId !== null && item.ingredientId === ingredientId) || manualIdSet.has(item.id)
+              ? { ...item, shoppingCategoryId: nextCategoryId }
+              : item,
+          ),
+        ]),
+      ),
+      shoppingHistory: state.shoppingHistory.map((item) =>
+        (ingredientId !== null && item.ingredientId === ingredientId)
+          || selectedNames.has(item.name.trim().toLowerCase())
+          ? { ...item, ingredientId, shoppingCategoryId: nextCategoryId }
+          : item,
+      ),
     })
   }
 
@@ -301,6 +289,7 @@ export function useShoppingController({
             state.shoppingHistory,
             target.name,
             target.shoppingCategoryId ?? null,
+            target.ingredientId ?? null,
           )
         : state.shoppingHistory,
     })

@@ -26,20 +26,27 @@ export function ShoppingList({
   const purchasedItems = items.filter((item) => item.checked)
 
   function renderItem(item: CombinedShoppingItem) {
+    const sourceDescription = item.kind === 'meal'
+      ? `${formatQuantity(item.totalQuantity)} ${item.unit} · meal plan`
+      : 'Added separately'
+    const itemDescription = item.kind === 'meal' ? `${item.name} from meal plan` : `manually added ${item.name}`
+
     return (
-      <div className={`shopping-item unified-shopping-item ${item.checked ? 'checked' : ''}`} key={`${item.kind}-${item.id}`}>
+      <div className={`shopping-item unified-shopping-item ${item.kind}-shopping-item ${item.checked ? 'checked' : ''}`} key={`${item.kind}-${item.id}`}>
         <label className="shopping-item-toggle">
           <input
             type="checkbox"
             checked={item.checked}
             onChange={() => item.kind === 'meal' ? onToggle(item.id) : onToggleManual(item.id)}
-            aria-label={`Mark ${item.name} ${item.checked ? 'needed' : 'purchased'}`}
+            aria-label={`Mark ${itemDescription} ${item.checked ? 'needed' : 'purchased'}`}
           />
           <span className="checkmark" />
-          <span className="shopping-name">{item.name}</span>
+          <span className="shopping-item-copy">
+            <span className="shopping-name">{item.name}</span>
+            <small>{sourceDescription}</small>
+          </span>
         </label>
         <div className="shopping-item-actions">
-          {item.quantity !== null && <strong>{formatQuantity(item.quantity)} {item.unit}</strong>}
           {item.checked && <button className="shopping-add-again" type="button" onClick={() => onAddAgain(item.name, item.categoryId)} aria-label={`Add ${item.name} again`}>+ Again</button>}
           {item.kind === 'manual' && <button className="shopping-delete" type="button" onClick={() => onDeleteManual(item.id)} aria-label={`Delete ${item.name}`}>×</button>}
         </div>
