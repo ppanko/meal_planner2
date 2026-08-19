@@ -1,0 +1,147 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { createAppState, weekDates } from '../test/fixtures'
+import type { ManualShoppingItem, ShoppingItem } from '../types'
+import { ShoppingView } from './ShoppingView'
+
+const shopping: ShoppingItem[] = [
+  {
+    lineId: 'outstanding:eggs', ingredientId: 'eggs', name: 'Eggs', unit: 'each',
+    quantity: 2, checked: false, shoppingCategoryId: 'dairy',
+  },
+  {
+    lineId: 'purchased:milk', ingredientId: 'milk', name: 'Milk', unit: 'cup',
+    quantity: 1, checked: true, shoppingCategoryId: null,
+  },
+]
+
+const manualItems: ManualShoppingItem[] = [
+  { id: 'manual', name: 'Bagels', checked: false, shoppingCategoryId: 'custom-bakery' },
+]
+
+function props() {
+  const state = createAppState()
+  return {
+    shopping,
+    manualItems,
+    onToggle: vi.fn(),
+    onAddManual: vi.fn(),
+    onToggleManual: vi.fn(),
+    onSetManualCategory: vi.fn(),
+    onDeleteManual: vi.fn(),
+    onClearChecked: vi.fn(),
+    history: [
+      { id: 'history', name: 'Coffee', lastPurchasedAt: '2026-08-01T12:00:00.000Z', shoppingCategoryId: 'aisle' },
+    ],
+    onAddHistory: vi.fn(),
+    onDeleteHistory: vi.fn(),
+    weekDates,
+    weekOffset: 1,
+    setWeekOffset: vi.fn(),
+    ingredients: state.ingredients,
+    shoppingCategories: [
+      { id: 'produce', name: 'Produce' },
+      { id: 'dairy', name: 'Dairy' },
+      { id: 'aisle', name: 'Aisle' },
+      { id: 'custom-bakery', name: 'Bakery' },
+    ],
+    onSetIngredientCategory: vi.fn(),
+    onAddShoppingCategory: vi.fn(),
+    onMoveShoppingCategory: vi.fn(),
+    onDeleteShoppingCategory: vi.fn(),
+  }
+}
+
+describe('ShoppingView', () => {
+  it('renders grouped shopping items and delegates item actions', async () => {
+    const callbacks = props()
+    const user = userEvent.setup()
+    render(<ShoppingView {...callbacks} />)
+
+    expect(screen.getByRole('heading', { name: 'Aug 17 – Aug 23' })).toBeInTheDocument()
+    expect(screen.getByText('2 items remaining')).toBeInTheDocument()
+    expect(screen.getAllByText('Bakery').some((element) => element.closest('.shopping-category-label'))).toBe(true)
+    expect(screen.getAllByText('Uncategorized')).not.toHaveLength(0)
+    expect(screen.getByText('Additional')).toBeInTheDocument()
+    expect(screen.getAllByText('Purchased')).toHaveLength(2)
+
+    await user.click(screen.getByText('Eggs').closest('label')!)
+    expect(callbacks.onToggle).toHaveBeenCalledWith('outstanding:eggs')
+
+    await user.click(screen.getByLabelText('Mark Bagels purchased'))
+    await user.selectOptions(screen.getByLabelText('Shopping category for Bagels'), 'dairy')
+    await user.click(screen.getByRole('button', { name: 'Delete Bagels' }))
+    expect(callbacks.onToggleManual).toHaveBeenCalledWith('manual')
+    expect(callbacks.onSetManualCategory).toHaveBeenCalledWith('manual', 'dairy')
+    expect(callbacks.onDeleteManual).toHaveBeenCalledWith('manual')
+
+    await user.click(screen.getByRole('button', { name: 'Clear checks' }))
+    expect(callbacks.onClearChecked).toHaveBeenCalled()
+  })
+
+  it('adds manual items, navigates weeks, and reuses history', async () => {
+    const callbacks = props()
+    const user = userEvent.setup()
+    render(<ShoppingView {...callbacks} />)
+
+    const addInput = screen.getByLabelText('Add shopping list item')
+    await user.type(addInput, '  Apples  ')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(callbacks.onAddManual).toHaveBeenCalledWith('Apples')
+    expect(addInput).toHaveValue('')
+
+    const navigation = screen.getAllByRole('button')
+    await user.click(navigation.find((button) => button.textContent === '‹')!)
+    await user.click(screen.getByRole('button', { name: 'Today' }))
+    await user.click(navigation.find((button) => button.textContent === '›')!)
+    expect(callbacks.setWeekOffset.mock.calls.map(([value]) => value)).toEqual([0, 0, 2])
+
+    const historyRow = screen.getByText('Coffee').closest('.history-row') as HTMLElement
+    await user.click(within(historyRow).getByRole('button', { name: '+ Add' }))
+    await user.click(within(historyRow).getByRole('button', { name: 'Remove Coffee from past items' }))
+    expect(callbacks.onAddHistory).toHaveBeenCalledWith('Coffee', 'aisle')
+    expect(callbacks.onDeleteHistory).toHaveBeenCalledWith('history')
+
+    await user.type(screen.getByLabelText('Search past shopping items'), 'missing')
+    expect(screen.getByText('Checked-off shopping items will appear here for quick reuse.')).toBeInTheDocument()
+  })
+
+  it('organizes categories and persistent ingredient assignments', async () => {
+    const callbacks = props()
+    const user = userEvent.setup()
+    render(<ShoppingView {...callbacks} />)
+
+    await user.click(screen.getByRole('button', { name: 'Organize categories' }))
+    const dialog = screen.getByRole('dialog', { name: 'Organize categories' })
+    await user.click(within(dialog).getByRole('button', { name: 'Move Dairy up' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Move Bakery up' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Bakery shopping category' }))
+    expect(callbacks.onMoveShoppingCategory).toHaveBeenCalledWith('dairy', -1)
+    expect(callbacks.onMoveShoppingCategory).toHaveBeenCalledWith('custom-bakery', -1)
+    expect(callbacks.onDeleteShoppingCategory).toHaveBeenCalledWith('custom-bakery')
+
+    await user.type(within(dialog).getByLabelText('New shopping category'), '  Bulk ')
+    await user.click(within(dialog).getByRole('button', { name: 'Add category' }))
+    expect(callbacks.onAddShoppingCategory).toHaveBeenCalledWith('Bulk')
+
+    const ingredientSearch = within(dialog).getByLabelText('Search ingredients to categorize')
+    await user.type(ingredientSearch, 'Eggs')
+    const eggsSelect = within(dialog).getByText('Eggs').closest('label')!.querySelector('select')!
+    await user.selectOptions(eggsSelect, 'dairy')
+    expect(callbacks.onSetIngredientCategory).toHaveBeenCalledWith('eggs', 'dairy')
+
+    await user.clear(ingredientSearch)
+    await user.type(ingredientSearch, 'not an ingredient')
+    expect(within(dialog).getByText('No ingredients match your search.')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('renders an empty-state explanation', () => {
+    const callbacks = props()
+    render(<ShoppingView {...callbacks} shopping={[]} manualItems={[]} history={[]} />)
+    expect(screen.getByText('Shopping list is empty')).toBeInTheDocument()
+    expect(screen.getByText('Checked-off shopping items will appear here for quick reuse.')).toBeInTheDocument()
+  })
+})

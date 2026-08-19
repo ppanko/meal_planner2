@@ -37,6 +37,19 @@ npm run build
 npm run preview
 ```
 
+## Testing
+
+The test suite uses Vitest, Testing Library, jsdom, and an in-memory IndexedDB implementation. Tests are colocated with the source files they cover.
+
+```bash
+npm test                # run the complete suite once
+npm run test:watch      # rerun affected tests while developing
+npm run test:coverage   # enforce coverage thresholds and write coverage/ reports
+npm run typecheck       # strict TypeScript check, including tests
+```
+
+The suite covers domain utilities, state migrations, local and Supabase persistence, realtime updates, feature controllers, authentication, UI interactions, and top-level application wiring. Supabase and browser boundaries are mocked; no live project or household code is needed to run tests.
+
 ## GitHub Pages deployment
 
 1. Create a GitHub repository and push this project to the `main` branch.
