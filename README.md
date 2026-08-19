@@ -10,11 +10,26 @@
   A private, mobile-first home for meal plans, recipes, and the groceries that connect them.
 </p>
 
-## One simple flow
+## A look inside
 
-| Plan | Shop | Cook |
-| --- | --- | --- |
-| Drag or tap meals into a flexible weekly calendar. | Get one combined list with the quantities worked out for you. | Open a focused recipe view with ingredients, notes, and instructions. |
+<p align="center">
+  <img src="docs/screenshots/planner.png" alt="Weekly meal planner filled with meals">
+</p>
+
+<table>
+  <tr>
+    <td width="68%">
+      <img src="docs/screenshots/shopping.png" alt="Generated shopping list organized by store category">
+    </td>
+    <td width="32%">
+      <img src="docs/screenshots/cooking.png" alt="Mobile cooking view with ingredients and recipe steps">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>One organized shopping list</strong></td>
+    <td align="center"><strong>A focused cooking view</strong></td>
+  </tr>
+</table>
 
 Meal Planner is built for the details of a real week: custom planner rows, reusable ingredients, one-off shopping items, store-order categories, purchase history, and the occasional need to buy milk twice.
 
