@@ -50,6 +50,7 @@ export type ManualShoppingItem = {
   id: string
   name: string
   checked: boolean
+  shoppingCategoryId?: string | null
 }
 
 export type ShoppingItem = {
@@ -66,6 +67,7 @@ export type ShoppingHistoryItem = {
   id: string
   name: string
   lastPurchasedAt: string
+  shoppingCategoryId?: string | null
 }
 export type AppState = {
   ingredients: Ingredient[]

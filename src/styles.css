@@ -88,7 +88,10 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .manual-shopping-item { cursor: default; }
 .manual-shopping-item .shopping-name, .manual-shopping-item .checkmark { cursor: pointer; }
 .manual-shopping-checkbox { position: absolute; opacity: 0; pointer-events: none; }
-.shopping-delete { grid-column: 3; border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 3px 6px; }
+.shopping-delete { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 3px 6px; }
+.manual-shopping-actions { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.manual-shopping-category { max-width: 145px; min-width: 105px; border: 1px solid var(--line); border-radius: 7px; background: white; color: #4f4a43; padding: 6px 7px; font-size: 10px; outline: none; }
+.manual-shopping-category:focus { border-color: #a9b8aa; box-shadow: 0 0 0 2px var(--accent-soft); }
 .shopping-delete:hover { color: var(--danger); }
 .manual-shopping-item.checked .shopping-name { text-decoration: line-through; color: #aaa39b; }
 .shopping-list { max-width: 700px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); overflow: hidden; }
@@ -1054,4 +1057,11 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .shopping-category-add button { width: 100%; }
   .shopping-category-ingredient-row { grid-template-columns: minmax(0, 1fr); gap: 5px; }
   .shopping-category-ingredient-list { max-height: 42vh; }
+}
+
+
+@media (max-width: 560px) {
+  .manual-shopping-item { grid-template-columns: 20px minmax(0, 1fr); gap: 8px 10px; }
+  .manual-shopping-actions { grid-column: 2; justify-content: space-between; }
+  .manual-shopping-category { flex: 1 1 auto; max-width: none; min-width: 0; }
 }

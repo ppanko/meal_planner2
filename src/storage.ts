@@ -144,15 +144,36 @@ export function normalizeState(state: Partial<AppState>): AppState {
       proteinCategoryOverrideId: migratedOverride,
     }
   })
+  const manualShoppingItems = Object.fromEntries(
+    Object.entries(state.manualShoppingItems ?? {}).map(([weekKey, items]) => [
+      weekKey,
+      items.map((item) => ({
+        ...item,
+        shoppingCategoryId:
+          item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId)
+            ? item.shoppingCategoryId
+            : null,
+      })),
+    ]),
+  )
+
+  const shoppingHistory = (state.shoppingHistory ?? []).map((item) => ({
+    ...item,
+    shoppingCategoryId:
+      item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId)
+        ? item.shoppingCategoryId
+        : null,
+  }))
+
   return {
     ingredients,
     meals,
     planner,
     shoppingChecked: state.shoppingChecked ?? {},
-    manualShoppingItems: state.manualShoppingItems ?? {},
+    manualShoppingItems,
     proteinCategories,
     plannerRowsByWeek: state.plannerRowsByWeek ?? {},
-    shoppingHistory: state.shoppingHistory ?? [],
+    shoppingHistory,
     plannerNotes: state.plannerNotes ?? {},
     shoppingPurchasesByWeek: state.shoppingPurchasesByWeek ?? {},
     shoppingCategories,

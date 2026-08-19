@@ -57,6 +57,7 @@ function getPlannerRows(state: AppState, weekDates: Date[]): PlannerRow[] {
 function upsertShoppingHistory(
   history: ShoppingHistoryItem[],
   name: string,
+  shoppingCategoryId: string | null = null,
 ): ShoppingHistoryItem[] {
   const normalized = name.trim().toLowerCase()
   if (!normalized) return history
@@ -67,7 +68,7 @@ function upsertShoppingHistory(
   if (existing) {
     return history.map((item) =>
       item.id === existing.id
-        ? { ...item, name: name.trim(), lastPurchasedAt: now }
+        ? { ...item, name: name.trim(), lastPurchasedAt: now, shoppingCategoryId }
         : item,
     )
   }
@@ -78,6 +79,7 @@ function upsertShoppingHistory(
       id: crypto.randomUUID(),
       name: name.trim(),
       lastPurchasedAt: now,
+      shoppingCategoryId,
     },
   ]
 }
@@ -671,14 +673,33 @@ function App() {
     const category = categories.find((item) => item.id === categoryId)
     if (!category) return
 
-    const assignedCount = state.ingredients.filter(
+    const ingredientAssignments = state.ingredients.filter(
       (ingredient) => ingredient.shoppingCategoryId === categoryId,
     ).length
+    const manualAssignments = Object.values(state.manualShoppingItems).reduce(
+      (count, items) => count + items.filter((item) => item.shoppingCategoryId === categoryId).length,
+      0,
+    )
+    const historyAssignments = state.shoppingHistory.filter(
+      (item) => item.shoppingCategoryId === categoryId,
+    ).length
+    const assignedCount = ingredientAssignments + manualAssignments + historyAssignments
     const detail = assignedCount > 0
-      ? ` ${assignedCount} assigned ingredient${assignedCount === 1 ? '' : 's'} will become uncategorized.`
+      ? ` ${assignedCount} assigned item${assignedCount === 1 ? '' : 's'} will become uncategorized.`
       : ''
 
     if (!confirm(`Delete shopping category "${category.name}"?${detail}`)) return
+
+    const manualShoppingItems = Object.fromEntries(
+      Object.entries(state.manualShoppingItems).map(([weekKey, items]) => [
+        weekKey,
+        items.map((item) =>
+          item.shoppingCategoryId === categoryId
+            ? { ...item, shoppingCategoryId: null }
+            : item,
+        ),
+      ]),
+    )
 
     updateWithUndo({
       ...state,
@@ -686,6 +707,12 @@ function App() {
         ingredient.shoppingCategoryId === categoryId
           ? { ...ingredient, shoppingCategoryId: null }
           : ingredient,
+      ),
+      manualShoppingItems,
+      shoppingHistory: state.shoppingHistory.map((item) =>
+        item.shoppingCategoryId === categoryId
+          ? { ...item, shoppingCategoryId: null }
+          : item,
       ),
       shoppingCategories: categories.filter((item) => item.id !== categoryId),
       shoppingCategoryOrder: categories
@@ -722,7 +749,11 @@ function App() {
       },
       shoppingHistory:
         !item.checked && ingredient
-          ? upsertShoppingHistory(state.shoppingHistory, ingredient.name)
+          ? upsertShoppingHistory(
+              state.shoppingHistory,
+              ingredient.name,
+              ingredient.shoppingCategoryId ?? null,
+            )
           : state.shoppingHistory,
     })
   }
@@ -736,6 +767,7 @@ function App() {
       id: crypto.randomUUID(),
       name: trimmed,
       checked: false,
+      shoppingCategoryId: null,
     }
 
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
@@ -748,7 +780,7 @@ function App() {
     })
   }
 
-  function addHistoryItemToShopping(name: string) {
+  function addHistoryItemToShopping(name: string, shoppingCategoryId: string | null = null) {
     if (!state) return
 
     const trimmed = name.trim()
@@ -765,6 +797,7 @@ function App() {
       id: crypto.randomUUID(),
       name: trimmed,
       checked: false,
+      shoppingCategoryId,
     }
 
     update({
@@ -772,6 +805,24 @@ function App() {
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: [...current, item],
+      },
+    })
+  }
+
+  function setManualShoppingCategory(id: string, categoryId: string | null) {
+    if (!state) return
+
+    const validCategoryIds = new Set(getOrderedShoppingCategories(state).map((category) => category.id))
+    const nextCategoryId = categoryId && validCategoryIds.has(categoryId) ? categoryId : null
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: current.map((item) =>
+          item.id === id ? { ...item, shoppingCategoryId: nextCategoryId } : item,
+        ),
       },
     })
   }
@@ -805,7 +856,11 @@ function App() {
         ),
       },
       shoppingHistory: nextChecked
-        ? upsertShoppingHistory(state.shoppingHistory, target.name)
+        ? upsertShoppingHistory(
+            state.shoppingHistory,
+            target.name,
+            target.shoppingCategoryId ?? null,
+          )
         : state.shoppingHistory,
     })
   }
@@ -920,6 +975,7 @@ function App() {
               onToggle={toggleShopping}
               onAddManual={addManualShoppingItem}
               onToggleManual={toggleManualShoppingItem}
+              onSetManualCategory={setManualShoppingCategory}
               onDeleteManual={deleteManualShoppingItem}
               onClearChecked={clearCheckedShopping}
               history={state.shoppingHistory}
@@ -2079,6 +2135,7 @@ function ShoppingView({
   onToggle,
   onAddManual,
   onToggleManual,
+  onSetManualCategory,
   onDeleteManual,
   onClearChecked,
   history,
@@ -2099,10 +2156,11 @@ function ShoppingView({
   onToggle: (lineId: string) => void
   onAddManual: (name: string) => void
   onToggleManual: (id: string) => void
+  onSetManualCategory: (id: string, categoryId: string | null) => void
   onDeleteManual: (id: string) => void
   onClearChecked: () => void
   history: ShoppingHistoryItem[]
-  onAddHistory: (name: string) => void
+  onAddHistory: (name: string, shoppingCategoryId?: string | null) => void
   onDeleteHistory: (id: string) => void
   weekDates: Date[]
   weekOffset: number
@@ -2132,7 +2190,7 @@ function ShoppingView({
         checked: boolean
         unit: ''
         quantity: null
-        categoryId: null
+        categoryId: string | null
       }
 
   type ShoppingGroup = {
@@ -2175,7 +2233,7 @@ function ShoppingView({
       checked: item.checked,
       unit: '',
       quantity: null,
-      categoryId: null,
+      categoryId: item.shoppingCategoryId ?? null,
     }))
 
     return [...mealItems, ...manual].sort((a, b) => a.name.localeCompare(b.name))
@@ -2209,22 +2267,16 @@ function ShoppingView({
     const groups: ShoppingGroup[] = shoppingCategories.map((category) => ({
       id: category.id,
       name: category.name,
-      items: items.filter(
-        (item) => item.kind === 'meal' && item.categoryId === category.id,
-      ),
+      items: items.filter((item) => item.categoryId === category.id),
     }))
 
     const validCategoryIds = new Set(shoppingCategories.map((category) => category.id))
     const uncategorized = items.filter(
-      (item) => item.kind === 'meal' && (!item.categoryId || !validCategoryIds.has(item.categoryId)),
+      (item) => !item.categoryId || !validCategoryIds.has(item.categoryId),
     )
-    const manual = items.filter((item) => item.kind === 'manual')
 
     if (uncategorized.length > 0) {
       groups.push({ id: '__uncategorized__', name: 'Uncategorized', items: uncategorized })
-    }
-    if (manual.length > 0) {
-      groups.push({ id: '__other__', name: 'Other', items: manual })
     }
 
     return groups.filter((group) => group.items.length > 0)
@@ -2274,14 +2326,29 @@ function ShoppingView({
         <span className="shopping-name" onClick={() => onToggleManual(item.id)}>
           {item.name}
         </span>
-        <button
-          className="shopping-delete"
-          type="button"
-          onClick={() => onDeleteManual(item.id)}
-          aria-label={`Delete ${item.name}`}
-        >
-          ×
-        </button>
+        <div className="manual-shopping-actions">
+          {!item.checked && (
+            <select
+              className="manual-shopping-category"
+              value={item.categoryId ?? ''}
+              onChange={(event) => onSetManualCategory(item.id, event.target.value || null)}
+              aria-label={`Shopping category for ${item.name}`}
+            >
+              <option value="">Uncategorized</option>
+              {shoppingCategories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          )}
+          <button
+            className="shopping-delete"
+            type="button"
+            onClick={() => onDeleteManual(item.id)}
+            aria-label={`Delete ${item.name}`}
+          >
+            ×
+          </button>
+        </div>
       </div>
     )
   }
@@ -2387,7 +2454,7 @@ function ShoppingView({
                       <span>Purchased</span>
                       <small>{purchasedItems.length}</small>
                     </div>
-                    {renderShoppingGroups(purchasedItems)}
+                    {purchasedItems.map(renderShoppingItem)}
                   </>
                 )}
               </div>
@@ -2431,7 +2498,7 @@ function ShoppingView({
                   <button
                     className="history-add"
                     type="button"
-                    onClick={() => onAddHistory(item.name)}
+                    onClick={() => onAddHistory(item.name, item.shoppingCategoryId ?? null)}
                   >
                     + Add
                   </button>
