@@ -143,6 +143,21 @@ describe('normalizeState', () => {
     expect(result.shoppingHistory[0].shoppingCategoryId).toBeNull()
   })
 
+  it('normalizes optional links and quantities for manually added shopping items', () => {
+    const result = normalizeState({
+      ingredients: [{ id: 'milk', name: 'Milk', unit: 'cup', proteinCategoryId: null }],
+      manualShoppingItems: {
+        '2026-08-17': [
+          { id: 'valid', name: 'Milk', checked: false, ingredientId: 'milk', quantity: 2, unit: ' cup ' },
+          { id: 'invalid', name: 'Other', checked: false, ingredientId: 'missing', quantity: -1, unit: ' ' },
+        ],
+      },
+    })
+
+    expect(result.manualShoppingItems['2026-08-17'][0]).toMatchObject({ ingredientId: 'milk', quantity: 2, unit: 'cup' })
+    expect(result.manualShoppingItems['2026-08-17'][1]).toMatchObject({ ingredientId: null, quantity: undefined, unit: undefined })
+  })
+
   it('does not share mutable seed arrays across normalized states', () => {
     const first = normalizeState({})
     const second = normalizeState({})

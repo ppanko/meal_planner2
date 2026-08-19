@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { defaultShoppingCategories } from '../types'
 import type { Ingredient, ManualShoppingItem, ShoppingCategory, ShoppingHistoryItem, ShoppingItem } from '../types'
 import { formatRange } from '../utils/dates'
 import { formatQuantity } from '../utils/text'
@@ -12,7 +11,6 @@ export function ShoppingView({
   onToggle,
   onAddManual,
   onToggleManual,
-  onSetManualCategory,
   onDeleteManual,
   onClearChecked,
   history,
@@ -23,7 +21,7 @@ export function ShoppingView({
   setWeekOffset,
   ingredients,
   shoppingCategories,
-  onSetIngredientCategory,
+  onSetItemCategory,
   onAddShoppingCategory,
   onMoveShoppingCategory,
   onDeleteShoppingCategory,
@@ -33,7 +31,6 @@ export function ShoppingView({
   onToggle: (lineId: string) => void
   onAddManual: (name: string) => void
   onToggleManual: (id: string) => void
-  onSetManualCategory: (id: string, categoryId: string | null) => void
   onDeleteManual: (id: string) => void
   onClearChecked: () => void
   history: ShoppingHistoryItem[]
@@ -44,7 +41,7 @@ export function ShoppingView({
   setWeekOffset: (n: number) => void
   ingredients: Ingredient[]
   shoppingCategories: ShoppingCategory[]
-  onSetIngredientCategory: (ingredientId: string, categoryId: string | null) => void
+  onSetItemCategory: (ingredientId: string | null, manualIds: string[], categoryId: string | null) => void
   onAddShoppingCategory: (name: string) => void
   onMoveShoppingCategory: (categoryId: string, direction: -1 | 1) => void
   onDeleteShoppingCategory: (categoryId: string) => void
@@ -65,8 +62,9 @@ export function ShoppingView({
         id: string
         name: string
         checked: boolean
-        unit: ''
-        quantity: null
+        ingredientId: string | null
+        unit: string
+        quantity: number | null
         categoryId: string | null
       }
 
@@ -76,11 +74,19 @@ export function ShoppingView({
     items: CombinedShoppingItem[]
   }
 
+  type CategoryItem = {
+    key: string
+    name: string
+    ingredientId: string | null
+    manualIds: string[]
+    categoryId: string | null
+  }
+
   const [newItem, setNewItem] = useState('')
   const [historySearch, setHistorySearch] = useState('')
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
-  const [ingredientSearch, setIngredientSearch] = useState('')
+  const [itemSearch, setItemSearch] = useState('')
 
   const remaining =
     shopping.filter((i) => !i.checked).length +
@@ -108,8 +114,9 @@ export function ShoppingView({
       id: item.id,
       name: item.name,
       checked: item.checked,
-      unit: '',
-      quantity: null,
+      ingredientId: item.ingredientId ?? null,
+      unit: item.unit ?? '',
+      quantity: item.quantity ?? null,
       categoryId: item.shoppingCategoryId ?? null,
     }))
 
@@ -118,6 +125,7 @@ export function ShoppingView({
 
   const toBuyItems = combinedShoppingItems.filter((item) => !item.checked)
   const purchasedItems = combinedShoppingItems.filter((item) => item.checked)
+  const neededNames = new Set(toBuyItems.map((item) => item.name.trim().toLowerCase()))
 
   const filteredHistory = useMemo(() => {
     const query = historySearch.trim().toLowerCase()
@@ -133,17 +141,50 @@ export function ShoppingView({
       })
   }, [history, historySearch])
 
-  const filteredIngredients = useMemo(() => {
-    const query = ingredientSearch.trim().toLowerCase()
-    return [...ingredients]
-      .filter((ingredient) => !query || ingredient.name.toLowerCase().includes(query))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [ingredients, ingredientSearch])
+  const suggestedNames = useMemo(() => [...new Set([
+    ...ingredients.map((ingredient) => ingredient.name.trim()),
+    ...history.map((item) => item.name.trim()),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b)), [ingredients, history])
 
-  const organizedManualItems = useMemo(
-    () => [...manualItems].sort((a, b) => a.name.localeCompare(b.name)),
-    [manualItems],
-  )
+  const categoryItems = useMemo<CategoryItem[]>(() => {
+    const byName = new Map<string, CategoryItem>()
+
+    for (const ingredient of ingredients) {
+      byName.set(ingredient.name.trim().toLowerCase(), {
+        key: `ingredient-${ingredient.id}`,
+        name: ingredient.name,
+        ingredientId: ingredient.id,
+        manualIds: [],
+        categoryId: ingredient.shoppingCategoryId ?? null,
+      })
+    }
+
+    for (const item of manualItems) {
+      const normalized = item.name.trim().toLowerCase()
+      const linkedIngredient = item.ingredientId
+        ? ingredients.find((ingredient) => ingredient.id === item.ingredientId)
+        : ingredients.find((ingredient) => ingredient.name.trim().toLowerCase() === normalized)
+      const key = linkedIngredient?.name.trim().toLowerCase() ?? normalized
+      const existing = byName.get(key)
+
+      if (existing) {
+        existing.manualIds.push(item.id)
+      } else {
+        byName.set(key, {
+          key: `manual-${item.id}`,
+          name: item.name,
+          ingredientId: null,
+          manualIds: [item.id],
+          categoryId: item.shoppingCategoryId ?? null,
+        })
+      }
+    }
+
+    const query = itemSearch.trim().toLowerCase()
+    return [...byName.values()]
+      .filter((item) => !query || item.name.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [ingredients, manualItems, itemSearch])
 
   function groupShoppingItems(items: CombinedShoppingItem[]): ShoppingGroup[] {
     const groups: ShoppingGroup[] = shoppingCategories.map((category) => ({
@@ -165,58 +206,25 @@ export function ShoppingView({
   }
 
   function renderShoppingItem(item: CombinedShoppingItem) {
-    if (item.kind === 'meal') {
-      return (
-        <label
-          className={`shopping-item ${item.checked ? 'checked' : ''}`}
-          key={`meal-${item.id}`}
-        >
+    return (
+      <div
+        className={`shopping-item unified-shopping-item ${item.checked ? 'checked' : ''}`}
+        key={`${item.kind}-${item.id}`}
+      >
+        <label className="shopping-item-toggle">
           <input
             type="checkbox"
             checked={item.checked}
-            onChange={() => onToggle(item.id)}
+            onChange={() => item.kind === 'meal' ? onToggle(item.id) : onToggleManual(item.id)}
+            aria-label={`Mark ${item.name} ${item.checked ? 'needed' : 'purchased'}`}
           />
           <span className="checkmark" />
-          <span className="shopping-name">
-            {item.name}
-            {item.checked ? (
-              <small className="shopping-status">Purchased</small>
-            ) : item.id.startsWith('outstanding:') ? (
-              <small className="shopping-status">Additional</small>
-            ) : null}
-          </span>
-          <strong>
-            {formatQuantity(item.quantity)} {item.unit}
-          </strong>
+          <span className="shopping-name">{item.name}</span>
         </label>
-      )
-    }
-
-    return (
-      <div
-        className={`shopping-item manual-shopping-item ${item.checked ? 'checked' : ''}`}
-        key={`manual-${item.id}`}
-      >
-        <input
-          className="manual-shopping-checkbox"
-          type="checkbox"
-          checked={item.checked}
-          onChange={() => onToggleManual(item.id)}
-          aria-label={`Mark ${item.name} ${item.checked ? 'not purchased' : 'purchased'}`}
-        />
-        <span className="checkmark" onClick={() => onToggleManual(item.id)} />
-        <span className="shopping-name" onClick={() => onToggleManual(item.id)}>
-          {item.name}
-        </span>
-        <div className="manual-shopping-actions">
-          <button
-            className="shopping-delete"
-            type="button"
-            onClick={() => onDeleteManual(item.id)}
-            aria-label={`Delete ${item.name}`}
-          >
-            ×
-          </button>
+        <div className="shopping-item-actions">
+          {item.quantity !== null && <strong>{formatQuantity(item.quantity)} {item.unit}</strong>}
+          {item.checked && <button className="shopping-add-again" type="button" onClick={() => onAddHistory(item.name, item.categoryId)} aria-label={`Add ${item.name} again`}>+ Again</button>}
+          {item.kind === 'manual' && <button className="shopping-delete" type="button" onClick={() => onDeleteManual(item.id)} aria-label={`Delete ${item.name}`}>×</button>}
         </div>
       </div>
     )
@@ -281,19 +289,17 @@ export function ShoppingView({
           <form className="shopping-add" onSubmit={submitManualItem}>
             <input
               type="text"
+              list="shopping-item-suggestions"
               value={newItem}
               onChange={(event) => setNewItem(event.target.value)}
-              placeholder="Add anything to the shopping list…"
+              placeholder="Add an item—or add more of something…"
               aria-label="Add shopping list item"
             />
+            <datalist id="shopping-item-suggestions">
+              {suggestedNames.map((name) => <option value={name} key={name} />)}
+            </datalist>
             <button className="primary" type="submit">Add</button>
           </form>
-
-          {hasChecked && (
-            <div style={{ marginBottom: 14 }}>
-              <button className="secondary" onClick={onClearChecked}>Clear checks</button>
-            </div>
-          )}
 
           {!hasItems ? (
             <div className="empty-state">
@@ -321,7 +327,10 @@ export function ShoppingView({
                   <>
                     <div className="shopping-group-label purchased-group-label">
                       <span>Purchased</span>
-                      <small>{purchasedItems.length}</small>
+                      <div className="purchased-group-actions">
+                        <small>{purchasedItems.length}</small>
+                        {hasChecked && <button type="button" onClick={onClearChecked} title="Move every purchased item back to To buy">Mark all needed</button>}
+                      </div>
                     </div>
                     {purchasedItems.map(renderShoppingItem)}
                   </>
@@ -334,8 +343,8 @@ export function ShoppingView({
         <aside className="shopping-history">
           <div className="shopping-history-header">
             <div>
-              <div className="eyebrow">PAST ITEMS</div>
-              <h3>Previously purchased</h3>
+              <div className="eyebrow">QUICK ADD</div>
+              <h3>Purchased before</h3>
             </div>
             <span>{history.length}</span>
           </div>
@@ -364,12 +373,8 @@ export function ShoppingView({
                     </small>
                   </div>
 
-                  <button
-                    className="history-add"
-                    type="button"
-                    onClick={() => onAddHistory(item.name, item.shoppingCategoryId ?? null)}
-                  >
-                    + Add
+                  <button className="history-add" type="button" disabled={neededNames.has(item.name.trim().toLowerCase())} onClick={() => onAddHistory(item.name, item.shoppingCategoryId ?? null)}>
+                    {neededNames.has(item.name.trim().toLowerCase()) ? 'On list' : '+ Add again'}
                   </button>
 
                   <button
@@ -462,23 +467,32 @@ export function ShoppingView({
               </form>
             </section>
 
-            {organizedManualItems.length > 0 && (
-              <section className="shopping-category-manager-section manual-category-section">
-                <div className="shopping-category-manager-heading">
-                  <div>
-                    <h3>Current list items</h3>
-                    <p>Choose categories for items you added manually this week.</p>
-                  </div>
+            <section className="shopping-category-manager-section item-category-section">
+              <div className="shopping-category-manager-heading">
+                <div>
+                  <h3>Item categories</h3>
+                  <p>Set where each item belongs. Its category will be reused automatically.</p>
                 </div>
+              </div>
 
-                <div className="shopping-category-ingredient-list">
-                  {organizedManualItems.map((item) => (
-                    <label className="shopping-category-ingredient-row" key={item.id}>
+              <input
+                className="shopping-category-ingredient-search"
+                type="search"
+                value={itemSearch}
+                onChange={(event) => setItemSearch(event.target.value)}
+                placeholder="Search items…"
+                aria-label="Search items to categorize"
+              />
+
+              <div className="shopping-category-ingredient-list">
+                {categoryItems.length > 0 ? (
+                  categoryItems.map((item) => (
+                    <label className="shopping-category-ingredient-row" key={item.key}>
                       <span>{item.name}</span>
                       <select
-                        value={item.shoppingCategoryId ?? ''}
+                        value={item.categoryId ?? ''}
                         onChange={(event) =>
-                          onSetManualCategory(item.id, event.target.value || null)
+                          onSetItemCategory(item.ingredientId, item.manualIds, event.target.value || null)
                         }
                         aria-label={`Shopping category for ${item.name}`}
                       >
@@ -488,48 +502,9 @@ export function ShoppingView({
                         ))}
                       </select>
                     </label>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <section className="shopping-category-manager-section ingredient-category-section">
-              <div className="shopping-category-manager-heading">
-                <div>
-                  <h3>Ingredient categories</h3>
-                  <p>Each ingredient keeps this category for future shopping lists.</p>
-                </div>
-              </div>
-
-              <input
-                className="shopping-category-ingredient-search"
-                type="search"
-                value={ingredientSearch}
-                onChange={(event) => setIngredientSearch(event.target.value)}
-                placeholder="Search ingredients…"
-                aria-label="Search ingredients to categorize"
-              />
-
-              <div className="shopping-category-ingredient-list">
-                {filteredIngredients.length > 0 ? (
-                  filteredIngredients.map((ingredient) => (
-                    <label className="shopping-category-ingredient-row" key={ingredient.id}>
-                      <span>{ingredient.name}</span>
-                      <select
-                        value={ingredient.shoppingCategoryId ?? ''}
-                        onChange={(event) =>
-                          onSetIngredientCategory(ingredient.id, event.target.value || null)
-                        }
-                      >
-                        <option value="">Uncategorized</option>
-                        {shoppingCategories.map((category) => (
-                          <option key={category.id} value={category.id}>{category.name}</option>
-                        ))}
-                      </select>
-                    </label>
                   ))
                 ) : (
-                  <div className="ingredient-manager-empty">No ingredients match your search.</div>
+                  <div className="ingredient-manager-empty">No items match your search.</div>
                 )}
               </div>
             </section>

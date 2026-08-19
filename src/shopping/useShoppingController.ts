@@ -38,22 +38,6 @@ export function useShoppingController({
     [state],
   )
 
-  function setIngredientShoppingCategory(ingredientId: string, categoryId: string | null) {
-    if (!state) return
-
-    const validCategoryIds = new Set(getOrderedShoppingCategories(state).map((category) => category.id))
-    const nextCategoryId = categoryId && validCategoryIds.has(categoryId) ? categoryId : null
-
-    update({
-      ...state,
-      ingredients: state.ingredients.map((ingredient) =>
-        ingredient.id === ingredientId
-          ? { ...ingredient, shoppingCategoryId: nextCategoryId }
-          : ingredient,
-      ),
-    })
-  }
-
   function addShoppingCategory(name: string) {
     if (!state) return
 
@@ -189,14 +173,24 @@ export function useShoppingController({
     const trimmed = name.trim()
     if (!trimmed) return
 
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    const normalized = trimmed.toLowerCase()
+    if (current.some((item) => !item.checked && item.name.trim().toLowerCase() === normalized)) return
+
+    const ingredient = state.ingredients.find(
+      (item) => item.name.trim().toLowerCase() === normalized,
+    )
+
     const item: ManualShoppingItem = {
       id: crypto.randomUUID(),
       name: trimmed,
       checked: false,
-      shoppingCategoryId: null,
+      shoppingCategoryId: ingredient?.shoppingCategoryId ?? null,
+      ingredientId: ingredient?.id ?? null,
+      quantity: ingredient ? 1 : undefined,
+      unit: ingredient?.unit,
     }
 
-    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
     update({
       ...state,
       manualShoppingItems: {
@@ -213,16 +207,24 @@ export function useShoppingController({
     if (!trimmed) return
 
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
-    const alreadyPresent = current.some(
-      (item) => item.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    const normalized = trimmed.toLowerCase()
+    const alreadyNeeded = current.some(
+      (item) => !item.checked && item.name.trim().toLowerCase() === normalized,
     )
-    if (alreadyPresent) return
+    if (alreadyNeeded) return
+
+    const ingredient = state.ingredients.find(
+      (item) => item.name.trim().toLowerCase() === normalized,
+    )
 
     const item: ManualShoppingItem = {
       id: crypto.randomUUID(),
       name: trimmed,
       checked: false,
-      shoppingCategoryId,
+      shoppingCategoryId: ingredient?.shoppingCategoryId ?? shoppingCategoryId ?? null,
+      ingredientId: ingredient?.id ?? null,
+      quantity: ingredient ? 1 : undefined,
+      unit: ingredient?.unit,
     }
 
     update({
@@ -234,19 +236,29 @@ export function useShoppingController({
     })
   }
 
-  function setManualShoppingCategory(id: string, categoryId: string | null) {
+  function setShoppingItemCategory(
+    ingredientId: string | null,
+    manualIds: string[],
+    categoryId: string | null,
+  ) {
     if (!state) return
 
     const validCategoryIds = new Set(getOrderedShoppingCategories(state).map((category) => category.id))
     const nextCategoryId = categoryId && validCategoryIds.has(categoryId) ? categoryId : null
+    const manualIdSet = new Set(manualIds)
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
 
     update({
       ...state,
+      ingredients: state.ingredients.map((ingredient) =>
+        ingredient.id === ingredientId
+          ? { ...ingredient, shoppingCategoryId: nextCategoryId }
+          : ingredient,
+      ),
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: current.map((item) =>
-          item.id === id ? { ...item, shoppingCategoryId: nextCategoryId } : item,
+          manualIdSet.has(item.id) ? { ...item, shoppingCategoryId: nextCategoryId } : item,
         ),
       },
     })
@@ -323,14 +335,13 @@ export function useShoppingController({
     shopping,
     manualShopping,
     orderedShoppingCategories,
-    setIngredientShoppingCategory,
     addShoppingCategory,
     moveShoppingCategory,
     deleteShoppingCategory,
     toggleShopping,
     addManualShoppingItem,
     addHistoryItemToShopping,
-    setManualShoppingCategory,
+    setShoppingItemCategory,
     deleteShoppingHistoryItem,
     toggleManualShoppingItem,
     deleteManualShoppingItem,

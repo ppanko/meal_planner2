@@ -21,11 +21,11 @@ describe('useShoppingController categories', () => {
     const state = createAppState()
     const { result, update } = setup(state)
 
-    act(() => result.current.setIngredientShoppingCategory('eggs', 'dairy'))
+    act(() => result.current.setShoppingItemCategory('eggs', [], 'dairy'))
     expect(update.mock.calls[0][0].ingredients.find(({ id }: { id: string }) => id === 'eggs'))
       .toMatchObject({ shoppingCategoryId: 'dairy' })
 
-    act(() => result.current.setIngredientShoppingCategory('eggs', 'missing'))
+    act(() => result.current.setShoppingItemCategory('eggs', [], 'missing'))
     expect(update.mock.calls[1][0].ingredients.find(({ id }: { id: string }) => id === 'eggs'))
       .toMatchObject({ shoppingCategoryId: null })
   })
@@ -175,7 +175,59 @@ describe('useShoppingController manual items and history', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
-  it('updates categories, toggles items, and adds checked items to history', () => {
+  it('adds a checked item again without changing any purchase records', () => {
+    const state = createAppState({
+      ingredients: createAppState().ingredients.map((item) =>
+        item.id === 'milk' ? { ...item, shoppingCategoryId: 'dairy' } : item,
+      ),
+      shoppingPurchasesByWeek: { '2026-08-17': { milk: 1, eggs: 2 } },
+      manualShoppingItems: {
+        '2026-08-17': [{ id: 'bought-milk', name: 'Milk', checked: true, shoppingCategoryId: 'dairy', ingredientId: 'milk', quantity: 1, unit: 'cup' }],
+      },
+    })
+    const { result, update } = setup(state)
+
+    act(() => result.current.addManualShoppingItem('Milk'))
+    let next = update.mock.calls[0][0] as AppState
+    expect(next.shoppingPurchasesByWeek).toEqual(state.shoppingPurchasesByWeek)
+    expect(next.manualShoppingItems['2026-08-17']).toEqual([
+      state.manualShoppingItems['2026-08-17'][0],
+      expect.objectContaining({
+        name: 'Milk',
+        checked: false,
+        shoppingCategoryId: 'dairy',
+        ingredientId: 'milk',
+        quantity: 1,
+        unit: 'cup',
+      }),
+    ])
+
+    update.mockClear()
+    act(() => result.current.addHistoryItemToShopping('Milk', 'aisle'))
+    next = update.mock.calls[0][0] as AppState
+    expect(next.shoppingPurchasesByWeek).toEqual(state.shoppingPurchasesByWeek)
+    expect(next.manualShoppingItems['2026-08-17'][1]).toMatchObject({ name: 'Milk', checked: false, ingredientId: 'milk' })
+  })
+
+  it('updates ingredient and matching manual categories in one state change', () => {
+    const state = createAppState({
+      manualShoppingItems: {
+        '2026-08-17': [
+          { id: 'milk-extra', name: 'Milk', checked: false, shoppingCategoryId: null, ingredientId: 'milk' },
+          { id: 'other', name: 'Other', checked: false, shoppingCategoryId: null },
+        ],
+      },
+    })
+    const { result, update } = setup(state)
+
+    act(() => result.current.setShoppingItemCategory('milk', ['milk-extra'], 'dairy'))
+    const next = update.mock.calls[0][0] as AppState
+    expect(next.ingredients.find((item) => item.id === 'milk')?.shoppingCategoryId).toBe('dairy')
+    expect(next.manualShoppingItems['2026-08-17'][0].shoppingCategoryId).toBe('dairy')
+    expect(next.manualShoppingItems['2026-08-17'][1].shoppingCategoryId).toBeNull()
+  })
+
+  it('toggles items and adds checked items to history', () => {
     const state = createAppState({
       manualShoppingItems: {
         '2026-08-17': [{ id: 'manual', name: 'Bagels', checked: false, shoppingCategoryId: null }],
@@ -183,15 +235,9 @@ describe('useShoppingController manual items and history', () => {
     })
     const { result, update } = setup(state)
 
-    act(() => result.current.setManualShoppingCategory('manual', 'aisle'))
-    expect(update.mock.calls[0][0].manualShoppingItems['2026-08-17'][0].shoppingCategoryId).toBe('aisle')
-
-    act(() => result.current.setManualShoppingCategory('manual', 'missing'))
-    expect(update.mock.calls[1][0].manualShoppingItems['2026-08-17'][0].shoppingCategoryId).toBeNull()
-
     act(() => result.current.toggleManualShoppingItem('manual'))
-    expect(update.mock.calls[2][0].manualShoppingItems['2026-08-17'][0].checked).toBe(true)
-    expect(update.mock.calls[2][0].shoppingHistory).toEqual([
+    expect(update.mock.calls[0][0].manualShoppingItems['2026-08-17'][0].checked).toBe(true)
+    expect(update.mock.calls[0][0].shoppingHistory).toEqual([
       expect.objectContaining({ name: 'Bagels' }),
     ])
   })

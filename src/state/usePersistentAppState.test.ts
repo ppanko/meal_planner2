@@ -57,7 +57,7 @@ describe('usePersistentAppState', () => {
 
     act(() => result.current.update(next))
     expect(result.current.state).toBe(next)
-    expect(mocks.saveState).toHaveBeenCalledWith(next)
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledWith(next))
   })
 
   it('snapshots destructive updates and restores them with undo', async () => {
@@ -75,9 +75,40 @@ describe('usePersistentAppState', () => {
     act(() => result.current.undoLastAction())
     expect(result.current.state).toEqual(initial)
     expect(result.current.undoAction).toBeNull()
-    expect(mocks.saveState).toHaveBeenLastCalledWith(expect.objectContaining({
+    await waitFor(() => expect(mocks.saveState).toHaveBeenLastCalledWith(expect.objectContaining({
       meals: initial.meals,
-    }))
+    })))
+  })
+
+  it('serializes rapid saves and ignores stale realtime echoes of local updates', async () => {
+    const initial = createAppState()
+    const first = createAppState({ shoppingPurchasesByWeek: { week: { milk: 1 } } })
+    const second = createAppState({
+      shoppingPurchasesByWeek: { week: { milk: 1 } },
+      manualShoppingItems: { week: [{ id: 'more', name: 'Milk', checked: false }] },
+    })
+    let finishFirst: (() => void) | undefined
+    mocks.saveState
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve }))
+      .mockResolvedValueOnce(undefined)
+    mocks.loadState.mockResolvedValue(initial)
+    const { result } = renderHook(() => usePersistentAppState())
+    await waitFor(() => expect(result.current.state).toBe(initial))
+
+    act(() => {
+      result.current.update(first)
+      result.current.update(second)
+    })
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledTimes(1))
+    expect(mocks.saveState).toHaveBeenNthCalledWith(1, first)
+    expect(result.current.state).toBe(second)
+
+    act(() => mocks.remoteListener?.(first))
+    expect(result.current.state).toBe(second)
+
+    finishFirst?.()
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledTimes(2))
+    expect(mocks.saveState).toHaveBeenNthCalledWith(2, second)
   })
 
   it('expires undo actions after six seconds and replaces prior timers', async () => {

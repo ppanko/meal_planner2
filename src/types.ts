@@ -54,6 +54,9 @@ export type ManualShoppingItem = {
   name: string
   checked: boolean
   shoppingCategoryId?: string | null
+  ingredientId?: string | null
+  quantity?: number
+  unit?: string
 }
 
 export type ShoppingItem = {

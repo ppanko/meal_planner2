@@ -158,6 +158,15 @@ export function normalizeState(state: Partial<AppState>): AppState {
       weekKey,
       items.map((item) => ({
         ...item,
+        ingredientId:
+          item.ingredientId && ingredients.some((ingredient) => ingredient.id === item.ingredientId)
+            ? item.ingredientId
+            : null,
+        quantity:
+          typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0
+            ? item.quantity
+            : undefined,
+        unit: typeof item.unit === 'string' && item.unit.trim() ? item.unit.trim() : undefined,
         shoppingCategoryId:
           item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId)
             ? item.shoppingCategoryId

@@ -12,6 +12,8 @@ export function usePersistentAppState() {
   const [storageReady, setStorageReady] = useState(false)
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
   const undoTimerRef = useRef<number | null>(null)
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const recentLocalStatesRef = useRef<string[]>([])
 
   useEffect(() => {
     let mounted = true
@@ -24,6 +26,8 @@ export function usePersistentAppState() {
 
     const unsubscribe = subscribeToRemoteState((remoteState) => {
       if (!mounted) return
+      const serialized = JSON.stringify(remoteState)
+      if (recentLocalStatesRef.current.includes(serialized)) return
       setState(remoteState)
       setStorageReady(true)
     })
@@ -44,7 +48,11 @@ export function usePersistentAppState() {
 
   function update(next: AppState) {
     setState(next)
-    void saveState(next)
+    const serialized = JSON.stringify(next)
+    recentLocalStatesRef.current = [...recentLocalStatesRef.current.slice(-9), serialized]
+    saveQueueRef.current = saveQueueRef.current
+      .catch(() => undefined)
+      .then(() => saveState(next))
   }
 
   function updateWithUndo(next: AppState, message: string) {

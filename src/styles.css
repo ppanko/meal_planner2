@@ -474,6 +474,13 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   white-space: nowrap;
 }
 
+.history-add:disabled {
+  background: #f1eee8;
+  color: var(--muted);
+  cursor: default;
+  opacity: .8;
+}
+
 .history-delete {
   border: 0;
   background: transparent;
@@ -493,6 +500,79 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   padding: 18px 4px 6px;
 }
 
+.unified-shopping-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  cursor: default;
+}
+
+.shopping-item-toggle {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.shopping-item-toggle .checkmark,
+.shopping-item-toggle .shopping-name {
+  grid-column: auto;
+}
+
+.shopping-item-toggle .shopping-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopping-item-toggle:has(input:focus-visible) .checkmark {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.shopping-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shopping-item-actions strong {
+  grid-column: auto;
+  white-space: nowrap;
+}
+
+.shopping-add-again {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  padding: 5px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.purchased-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.purchased-group-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   .shopping-layout {
     grid-template-columns: 1fr;
@@ -505,6 +585,13 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .history-table {
     max-height: 320px;
   }
+}
+
+@media (max-width: 500px) {
+  .unified-shopping-item { padding: 13px 12px; gap: 8px; }
+  .shopping-item-toggle { gap: 9px; }
+  .shopping-item-actions { gap: 4px; }
+  .shopping-add-again { padding: 5px 6px; }
 }
 
 /* Planner slot notes */
