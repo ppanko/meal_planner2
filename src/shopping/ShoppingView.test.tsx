@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createAppState, weekDates } from '../test/fixtures'
@@ -88,11 +88,22 @@ describe('ShoppingView', () => {
   it('adds manual items, navigates weeks, and reuses history', async () => {
     const callbacks = props()
     const user = userEvent.setup()
-    const { container } = render(<ShoppingView {...callbacks} />)
+    render(<ShoppingView {...callbacks} />)
 
     const addInput = screen.getByLabelText('Add shopping list item')
-    expect(addInput).toHaveAttribute('list', 'shopping-item-suggestions')
-    expect(container.querySelector('datalist option[value="Milk"]')).toBeInTheDocument()
+    expect(addInput).toHaveAttribute('role', 'combobox')
+    await user.type(addInput, 'mi')
+    expect(screen.getByRole('listbox', { name: 'Suggested shopping items' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Milk/ })).toBeInTheDocument()
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(addInput).toHaveValue('Milk')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await user.keyboard('{Enter}')
+    expect(callbacks.onAddManual).toHaveBeenCalledWith('Milk')
+
+    await user.type(addInput, 'egg')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await user.clear(addInput)
     await user.type(addInput, '  Apples  ')
     await user.click(screen.getByRole('button', { name: 'Add' }))
     expect(callbacks.onAddManual).toHaveBeenCalledWith('Apples')
@@ -120,6 +131,31 @@ describe('ShoppingView', () => {
 
     const historyRow = screen.getAllByText('Bagels').find((element) => element.closest('.history-row'))!.closest('.history-row') as HTMLElement
     expect(within(historyRow).getByRole('button', { name: 'On list' })).toBeDisabled()
+  })
+
+  it('supports pointer selection, reverse keyboard navigation, and dismissal', async () => {
+    const callbacks = props()
+    const user = userEvent.setup()
+    render(<ShoppingView {...callbacks} />)
+    const addInput = screen.getByRole('combobox', { name: 'Add shopping list item' })
+
+    await user.type(addInput, 'cof')
+    const coffee = screen.getByRole('option', { name: /Coffee/ })
+    fireEvent.pointerMove(coffee)
+    fireEvent.pointerDown(coffee)
+    expect(addInput).toHaveValue('Coffee')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    await user.clear(addInput)
+    await user.type(addInput, 'chi')
+    await user.keyboard('{ArrowUp}{Enter}')
+    expect(addInput).toHaveValue('Chicken')
+
+    await user.clear(addInput)
+    await user.type(addInput, 'bro')
+    expect(screen.getByRole('option', { name: /Broccoli/ })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('organizes categories and persistent ingredient assignments', async () => {

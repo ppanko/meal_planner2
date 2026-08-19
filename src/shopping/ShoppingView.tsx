@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
 import type { Ingredient, ManualShoppingItem, ShoppingCategory, ShoppingHistoryItem, ShoppingItem } from '../types'
 import { formatRange } from '../utils/dates'
 import { formatQuantity } from '../utils/text'
@@ -87,6 +87,8 @@ export function ShoppingView({
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [itemSearch, setItemSearch] = useState('')
+  const [addInputFocused, setAddInputFocused] = useState(false)
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1)
 
   const remaining =
     shopping.filter((i) => !i.checked).length +
@@ -141,10 +143,35 @@ export function ShoppingView({
       })
   }, [history, historySearch])
 
-  const suggestedNames = useMemo(() => [...new Set([
-    ...ingredients.map((ingredient) => ingredient.name.trim()),
-    ...history.map((item) => item.name.trim()),
-  ].filter(Boolean))].sort((a, b) => a.localeCompare(b)), [ingredients, history])
+  const suggestedNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const name of [
+      ...ingredients.map((ingredient) => ingredient.name),
+      ...history.map((item) => item.name),
+    ]) {
+      const trimmed = name.trim()
+      if (trimmed && !names.has(trimmed.toLowerCase())) names.set(trimmed.toLowerCase(), trimmed)
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b))
+  }, [ingredients, history])
+
+  const suggestionQuery = newItem.trim().toLowerCase()
+  const addSuggestions = suggestionQuery
+    ? suggestedNames
+      .filter((name) => {
+        const normalized = name.toLowerCase()
+        return normalized !== suggestionQuery &&
+          normalized.includes(suggestionQuery) &&
+          !neededNames.has(normalized)
+      })
+      .sort((a, b) => {
+        const aStarts = a.toLowerCase().startsWith(suggestionQuery)
+        const bStarts = b.toLowerCase().startsWith(suggestionQuery)
+        if (aStarts !== bStarts) return aStarts ? -1 : 1
+        return a.localeCompare(b)
+      })
+      .slice(0, 6)
+    : []
 
   const categoryItems = useMemo<CategoryItem[]>(() => {
     const byName = new Map<string, CategoryItem>()
@@ -249,6 +276,37 @@ export function ShoppingView({
 
     onAddManual(trimmed)
     setNewItem('')
+    setAddInputFocused(false)
+    setActiveSuggestionIndex(-1)
+  }
+
+  function chooseAddSuggestion(name: string) {
+    setNewItem(name)
+    setAddInputFocused(false)
+    setActiveSuggestionIndex(-1)
+  }
+
+  function handleAddInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      setAddInputFocused(false)
+      setActiveSuggestionIndex(-1)
+      return
+    }
+
+    if (addSuggestions.length === 0) return
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setAddInputFocused(true)
+      setActiveSuggestionIndex((index) => (index + 1) % addSuggestions.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setAddInputFocused(true)
+      setActiveSuggestionIndex((index) => index <= 0 ? addSuggestions.length - 1 : index - 1)
+    } else if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
+      event.preventDefault()
+      chooseAddSuggestion(addSuggestions[activeSuggestionIndex])
+    }
   }
 
   function submitCategory(event: FormEvent) {
@@ -286,20 +344,54 @@ export function ShoppingView({
 
       <div className="shopping-layout">
         <div className="shopping-current">
-          <form className="shopping-add" onSubmit={submitManualItem}>
-            <input
-              type="text"
-              list="shopping-item-suggestions"
-              value={newItem}
-              onChange={(event) => setNewItem(event.target.value)}
-              placeholder="Add an item—or add more of something…"
-              aria-label="Add shopping list item"
-            />
-            <datalist id="shopping-item-suggestions">
-              {suggestedNames.map((name) => <option value={name} key={name} />)}
-            </datalist>
-            <button className="primary" type="submit">Add</button>
-          </form>
+          <div className="shopping-add-shell">
+            <form className="shopping-add" onSubmit={submitManualItem}>
+              <input
+                type="text"
+                value={newItem}
+                onChange={(event) => {
+                  setNewItem(event.target.value)
+                  setAddInputFocused(true)
+                  setActiveSuggestionIndex(-1)
+                }}
+                onFocus={() => setAddInputFocused(true)}
+                onBlur={() => {
+                  setAddInputFocused(false)
+                  setActiveSuggestionIndex(-1)
+                }}
+                onKeyDown={handleAddInputKeyDown}
+                placeholder="Add an item—or add more of something…"
+                aria-label="Add shopping list item"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={addInputFocused && addSuggestions.length > 0}
+                aria-controls="shopping-item-suggestions"
+                aria-activedescendant={activeSuggestionIndex >= 0 ? `shopping-suggestion-${activeSuggestionIndex}` : undefined}
+                autoComplete="off"
+              />
+              <button className="primary" type="submit">Add</button>
+            </form>
+            {addInputFocused && addSuggestions.length > 0 && (
+              <div className="shopping-suggestions" id="shopping-item-suggestions" role="listbox" aria-label="Suggested shopping items">
+                {addSuggestions.map((name, index) => (
+                  <div
+                    className={`shopping-suggestion ${index === activeSuggestionIndex ? 'active' : ''}`}
+                    id={`shopping-suggestion-${index}`}
+                    role="option"
+                    aria-selected={index === activeSuggestionIndex}
+                    key={name}
+                    onPointerDown={(event) => {
+                      event.preventDefault()
+                      chooseAddSuggestion(name)
+                    }}
+                    onPointerMove={() => setActiveSuggestionIndex(index)}
+                  >
+                    <span>{name}</span><small>Complete</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {!hasItems ? (
             <div className="empty-state">
