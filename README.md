@@ -58,3 +58,17 @@ The service worker caches the application so it can continue to work when offlin
 ## Data
 
 Data is local to the browser/device. Clearing the site's browser data will remove the stored meal planner data. The app also migrates data from the previous localStorage version if it finds it.
+
+
+## Developer configuration
+
+This build uses a local `.secrets` file instead of hard-coded values.
+
+```bash
+cp .secrets.example .secrets
+```
+
+Fill in `.secrets`, then run `npm run dev`. The file is gitignored.
+
+For GitHub Pages, configure the corresponding GitHub Actions repository secrets;
+the deployment workflow injects them automatically.

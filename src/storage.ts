@@ -1,5 +1,6 @@
 import type { AppState, Ingredient, Meal } from './types'
 import { seedProteinCategories, seedState } from './data'
+import { sharedStateId, supabase, supabaseConfigured } from './supabase'
 
 const DB_NAME = 'meal-planner-db'
 const DB_VERSION = 1
@@ -12,7 +13,7 @@ function cloneSeed(): AppState {
 }
 
 
-function normalizeState(state: Partial<AppState>): AppState {
+export function normalizeState(state: Partial<AppState>): AppState {
   const seed = cloneSeed()
 
   const proteinCategories =
@@ -172,12 +173,11 @@ function readLegacyLocalStorage(): AppState | null {
   }
 }
 
-export async function loadState(): Promise<AppState> {
+async function loadLocalState(): Promise<AppState> {
   try {
     const stored = await readIndexedDB()
     if (stored) return normalizeState(stored)
 
-    // One-time migration from the previous localStorage implementation.
     const legacy = readLegacyLocalStorage()
     if (legacy) {
       await writeIndexedDB(legacy)
@@ -185,22 +185,121 @@ export async function loadState(): Promise<AppState> {
       return legacy
     }
 
-    const initial = cloneSeed()
-    await writeIndexedDB(initial)
-    return initial
+    return cloneSeed()
   } catch {
-    // IndexedDB can be unavailable in unusual/private browser contexts.
-    // Keep the app usable with the old localStorage mechanism as a fallback.
-    const legacy = readLegacyLocalStorage()
-    return legacy ?? cloneSeed()
+    return readLegacyLocalStorage() ?? cloneSeed()
   }
 }
 
-export async function saveState(state: AppState): Promise<void> {
+async function cacheState(state: AppState): Promise<void> {
   try {
     await writeIndexedDB(state)
   } catch {
     localStorage.setItem(LEGACY_KEY, JSON.stringify(state))
+  }
+}
+
+async function readRemoteState(): Promise<AppState | null> {
+  if (!supabaseConfigured) return null
+
+  const { data, error } = await supabase
+    .from('meal_planner_state')
+    .select('state')
+    .eq('id', sharedStateId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data?.state) return null
+
+  return normalizeState(data.state as Partial<AppState>)
+}
+
+async function writeRemoteState(state: AppState): Promise<void> {
+  if (!supabaseConfigured) return
+
+  const { error } = await supabase
+    .from('meal_planner_state')
+    .upsert(
+      {
+        id: sharedStateId,
+        state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+
+  if (error) throw error
+}
+
+export async function loadState(): Promise<AppState> {
+  const local = await loadLocalState()
+
+  if (!supabaseConfigured) {
+    await cacheState(local)
+    return local
+  }
+
+  try {
+    const remote = await readRemoteState()
+
+    if (remote) {
+      await cacheState(remote)
+      return remote
+    }
+
+    // First authenticated device seeds the shared row from its existing local data.
+    await writeRemoteState(local)
+    await cacheState(local)
+    return local
+  } catch (error) {
+    console.warn('Remote meal-planner state unavailable; using local cache.', error)
+    return local
+  }
+}
+
+export async function saveState(state: AppState): Promise<void> {
+  const normalized = normalizeState(state)
+
+  // Always save locally first so the UI remains resilient offline.
+  await cacheState(normalized)
+
+  if (!supabaseConfigured) return
+
+  try {
+    await writeRemoteState(normalized)
+  } catch (error) {
+    console.warn('Could not sync meal-planner state to Supabase.', error)
+  }
+}
+
+export function subscribeToRemoteState(
+  onState: (state: AppState) => void,
+): () => void {
+  if (!supabaseConfigured) return () => undefined
+
+  const channel = supabase
+    .channel(`meal-planner-state-${sharedStateId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'meal_planner_state',
+        filter: `id=eq.${sharedStateId}`,
+      },
+      (payload) => {
+        const row = payload.new as { state?: Partial<AppState> } | undefined
+        if (!row?.state) return
+
+        const next = normalizeState(row.state)
+        void cacheState(next)
+        onState(next)
+      },
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
   }
 }
 

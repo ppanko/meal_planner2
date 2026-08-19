@@ -20,6 +20,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +35,11 @@ jobs:
         run: npm install
 
       - name: Build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
+          VITE_SUPABASE_STATE_ID: ${{ secrets.SUPABASE_STATE_ID }}
         run: npm run build
 
       - name: Configure Pages

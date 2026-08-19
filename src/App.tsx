@@ -14,7 +14,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
 import type { AppState, Ingredient, ManualShoppingItem, Meal, MealType, Planner, PlannerRow, ProteinCategory, ShoppingHistoryItem, ShoppingItem } from './types'
 import { mealTypes } from './data'
-import { loadState, saveState } from './storage'
+import { loadState, saveState, subscribeToRemoteState } from './storage'
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 const dayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -70,10 +70,24 @@ function App() {
   const [duplicateMode, setDuplicateMode] = useState(false)
 
   useEffect(() => {
+    let mounted = true
+
     loadState().then((loaded) => {
+      if (!mounted) return
       setState(loaded)
       setStorageReady(true)
     })
+
+    const unsubscribe = subscribeToRemoteState((remoteState) => {
+      if (!mounted) return
+      setState(remoteState)
+      setStorageReady(true)
+    })
+
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
   }, [])
 
   const sensors = useSensors(
