@@ -138,6 +138,7 @@ describe('useMealsController', () => {
   it('creates ingredients and removes only unused ingredients', () => {
     const state = createAppState({
       shoppingPurchasesByWeek: { '2026-08-17': { orphan: 2, eggs: 4 } },
+      shoppingDismissedByWeek: { '2026-08-17': { orphan: 1, eggs: 2 } },
       ingredients: [
         ...createAppState().ingredients,
         { id: 'orphan', name: 'Orphan', unit: 'each', proteinCategoryId: null },
@@ -163,6 +164,7 @@ describe('useMealsController', () => {
       expect.objectContaining({
         ingredients: expect.not.arrayContaining([expect.objectContaining({ id: 'orphan' })]),
         shoppingPurchasesByWeek: { '2026-08-17': { eggs: 4 } },
+        shoppingDismissedByWeek: { '2026-08-17': { eggs: 2 } },
       }),
       'Deleted ingredient Orphan',
     )

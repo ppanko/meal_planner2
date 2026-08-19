@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { AppState, Meal, ProteinCategory } from '../types'
-import { MealProteinDots, ProteinDot, getMealProteinCategories } from '../meals/mealProtein'
 import { dateKey, formatRange } from '../utils/dates'
-import { dayShort, defaultPlannerRows, getPlannerRows, getSlotMealIds } from './plannerUtils'
-import { DraggableMeal, MobilePlannerSlot, PlannerSlot } from './PlannerSlots'
+import { MealBrowser } from './MealBrowser'
+import { MobileMealPicker } from './MobileMealPicker'
+import type { MobilePickerSlot } from './MobileMealPicker'
+import { PlannerRowEditor } from './PlannerRowEditor'
+import { dayShort, defaultPlannerRows, filterMeals, getPlannerRows, getSlotMealIds } from './plannerUtils'
+import { MobilePlannerSlot, PlannerSlot } from './PlannerSlots'
 
 export function PlannerView({
   state,
@@ -37,22 +40,24 @@ export function PlannerView({
   const [showMealBrowser, setShowMealBrowser] = useState(false)
   const [newRowLabel, setNewRowLabel] = useState('')
   const [showRowEditor, setShowRowEditor] = useState(false)
-  const [mobilePickerSlot, setMobilePickerSlot] = useState<{ day: string; rowId: string; label: string } | null>(null)
+  const [mobilePickerSlot, setMobilePickerSlot] = useState<MobilePickerSlot | null>(null)
   const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
 
-  const filteredMeals = useMemo(() => {
-    const query = mealSearch.trim().toLowerCase()
+  const filteredMeals = useMemo(
+    () => filterMeals(state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter),
+    [state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter],
+  )
 
-    return [...state.meals]
-      .filter((meal) => !query || meal.name.toLowerCase().includes(query))
-      .filter((meal) => {
-        if (proteinFilter === 'All') return true
-        const categories = getMealProteinCategories(meal, state.ingredients, proteinCategories)
-        if (categories.length === 0) return proteinFilter === 'none'
-        return categories.some((category) => category.id === proteinFilter)
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter])
+  function savePlannerRow() {
+    addPlannerRow(newRowLabel)
+    setNewRowLabel('')
+    setShowRowEditor(false)
+  }
+
+  function cancelPlannerRow() {
+    setNewRowLabel('')
+    setShowRowEditor(false)
+  }
 
   return (
     <section className="planner-page">
@@ -81,71 +86,17 @@ export function PlannerView({
       </button>
 
       <div className="planner-layout desktop-planner-layout">
-        <aside className={`meal-library ${showMealBrowser ? 'mobile-open' : ''}`}>
-          <div className="meal-browser-header">
-            <h3>Meals</h3>
-            <p className="hint">Drag a meal to a slot, or tap it to add it to the next empty slot.</p>
-
-            <div className="meal-search-wrap">
-              <span aria-hidden="true">⌕</span>
-              <input
-                className="meal-search"
-                type="search"
-                value={mealSearch}
-                onChange={(event) => setMealSearch(event.target.value)}
-                placeholder="Search meals…"
-                aria-label="Search meals"
-              />
-              {mealSearch && (
-                <button
-                  className="meal-search-clear"
-                  type="button"
-                  onClick={() => setMealSearch('')}
-                  aria-label="Clear meal search"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-
-            <div className="protein-filter" aria-label="Filter meals by protein">
-              <button
-                type="button"
-                className={proteinFilter === 'All' ? 'active' : ''}
-                onClick={() => setProteinFilter('All')}
-              >
-                All
-              </button>
-              {proteinCategories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={proteinFilter === category.id ? 'active' : ''}
-                  onClick={() => setProteinFilter(category.id)}
-                >
-                  <ProteinDot category={category} />
-                  {category.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="meal-browser-list">
-            {filteredMeals.length > 0 ? (
-              filteredMeals.map((meal) => (
-                <DraggableMeal
-                  key={meal.id}
-                  meal={meal}
-                  onTap={() => addMeal(meal)}
-                  ingredients={state.ingredients}
-                  proteinCategories={proteinCategories}
-                />
-              ))
-            ) : (
-              <div className="meal-browser-empty">No meals match “{mealSearch}”.</div>
-            )}
-          </div>
-        </aside>
+        <MealBrowser
+          open={showMealBrowser}
+          meals={filteredMeals}
+          ingredients={state.ingredients}
+          proteinCategories={proteinCategories}
+          search={mealSearch}
+          proteinFilter={proteinFilter}
+          onSearchChange={setMealSearch}
+          onProteinFilterChange={setProteinFilter}
+          onAddMeal={addMeal}
+        />
 
         <div className="planner-scroll">
           <div className="planner-grid">
@@ -207,71 +158,7 @@ export function PlannerView({
             })}
 
             <div className={`planner-add-row ${showRowEditor ? 'editing' : ''}`}>
-              {!showRowEditor ? (
-                <button
-                  type="button"
-                  className="add-row-trigger"
-                  onClick={() => setShowRowEditor(true)}
-                >
-                  <span className="add-row-icon">+</span>
-                  <span>
-                    <strong>Add custom row</strong>
-                    <small>For guests, kids, dietary needs, or another meal</small>
-                  </span>
-                </button>
-              ) : (
-                <div className="add-row-editor">
-                  <div className="add-row-editor-copy">
-                    <strong>New planner row</strong>
-                    <small>Name is optional</small>
-                  </div>
-
-                  <input
-                    value={newRowLabel}
-                    onChange={(event) => setNewRowLabel(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        addPlannerRow(newRowLabel)
-                        setNewRowLabel('')
-                        setShowRowEditor(false)
-                      }
-
-                      if (event.key === 'Escape') {
-                        setNewRowLabel('')
-                        setShowRowEditor(false)
-                      }
-                    }}
-                    placeholder="e.g. Guests"
-                    aria-label="Optional new planner row name"
-                    autoFocus
-                  />
-
-                  <div className="add-row-editor-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => {
-                        setNewRowLabel('')
-                        setShowRowEditor(false)
-                      }}
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="button"
-                      className="primary"
-                      onClick={() => {
-                        addPlannerRow(newRowLabel)
-                        setNewRowLabel('')
-                        setShowRowEditor(false)
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              )}
+              <PlannerRowEditor editing={showRowEditor} value={newRowLabel} onStart={() => setShowRowEditor(true)} onChange={setNewRowLabel} onSave={savePlannerRow} onCancel={cancelPlannerRow} />
             </div>
           </div>
         </div>
@@ -324,65 +211,7 @@ export function PlannerView({
         </div>
 
         <div className={`mobile-custom-row-manager ${showRowEditor ? 'editing' : ''}`}>
-          {!showRowEditor ? (
-            <button
-              type="button"
-              className="mobile-custom-row-trigger"
-              onClick={() => setShowRowEditor(true)}
-            >
-              <span className="add-row-icon">+</span>
-              <span>
-                <strong>Add custom row</strong>
-                <small>For guests, kids, dietary needs, or another meal</small>
-              </span>
-            </button>
-          ) : (
-            <div className="mobile-custom-row-editor">
-              <input
-                value={newRowLabel}
-                onChange={(event) => setNewRowLabel(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    addPlannerRow(newRowLabel)
-                    setNewRowLabel('')
-                    setShowRowEditor(false)
-                  }
-
-                  if (event.key === 'Escape') {
-                    setNewRowLabel('')
-                    setShowRowEditor(false)
-                  }
-                }}
-                placeholder="e.g. Kids, Vegetarian, Extra meal"
-                aria-label="Optional new planner row name"
-                autoFocus
-              />
-
-              <div className="mobile-custom-row-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    setNewRowLabel('')
-                    setShowRowEditor(false)
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => {
-                    addPlannerRow(newRowLabel)
-                    setNewRowLabel('')
-                    setShowRowEditor(false)
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          )}
+          <PlannerRowEditor mobile editing={showRowEditor} value={newRowLabel} onStart={() => setShowRowEditor(true)} onChange={setNewRowLabel} onSave={savePlannerRow} onCancel={cancelPlannerRow} />
 
           {customRows.length > 0 && (
             <div className="mobile-custom-row-list" aria-label="Custom planner rows">
@@ -406,62 +235,21 @@ export function PlannerView({
       </div>
 
       {mobilePickerSlot && (
-        <div className="mobile-meal-picker-backdrop" onClick={() => setMobilePickerSlot(null)}>
-          <div
-            className="mobile-meal-picker"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mobile-picker-handle" />
-            <div className="mobile-picker-header">
-              <div>
-                <div className="eyebrow">ADD MEAL</div>
-                <h3>{mobilePickerSlot.label}</h3>
-              </div>
-              <button type="button" className="mobile-picker-close" onClick={() => setMobilePickerSlot(null)}>×</button>
-            </div>
-
-            <div className="meal-search-wrap mobile-picker-search">
-              <span aria-hidden="true">⌕</span>
-              <input
-                className="meal-search"
-                type="search"
-                value={mealSearch}
-                onChange={(event) => setMealSearch(event.target.value)}
-                placeholder="Search meals…"
-                autoFocus
-              />
-            </div>
-
-            <div className="protein-filter mobile-picker-filters">
-              <button type="button" className={proteinFilter === 'All' ? 'active' : ''} onClick={() => setProteinFilter('All')}>All</button>
-              {proteinCategories.map((category) => (
-                <button key={category.id} type="button" className={proteinFilter === category.id ? 'active' : ''} onClick={() => setProteinFilter(category.id)}>
-                  <ProteinDot category={category} />{category.name}
-                </button>
-              ))}
-            </div>
-
-            <div className="mobile-picker-list">
-              {filteredMeals.map((meal) => (
-                <button
-                  type="button"
-                  className="mobile-picker-meal"
-                  key={meal.id}
-                  onClick={() => {
-                    addMealToSlot(mobilePickerSlot.day, mobilePickerSlot.rowId, meal)
-                    setMobilePickerSlot(null)
-                  }}
-                >
-                  <MealProteinDots meal={meal} ingredients={state.ingredients} proteinCategories={proteinCategories} />
-                  <span>{meal.name}</span>
-                  <b>+</b>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <MobileMealPicker
+          slot={mobilePickerSlot}
+          meals={filteredMeals}
+          ingredients={state.ingredients}
+          proteinCategories={proteinCategories}
+          search={mealSearch}
+          proteinFilter={proteinFilter}
+          onSearchChange={setMealSearch}
+          onProteinFilterChange={setProteinFilter}
+          onChoose={(meal) => {
+            addMealToSlot(mobilePickerSlot.day, mobilePickerSlot.rowId, meal)
+            setMobilePickerSlot(null)
+          }}
+          onClose={() => setMobilePickerSlot(null)}
+        />
       )}
     </section>
   )

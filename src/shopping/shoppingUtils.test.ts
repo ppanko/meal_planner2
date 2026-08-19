@@ -122,6 +122,13 @@ describe('buildShoppingList', () => {
   it('ignores purchases for unknown ingredients', () => {
     expect(buildShoppingList(createAppState(), weekDates, { missing: 3 })).toEqual([])
   })
+
+  it('subtracts previously cleared quantities while showing newly added needs', () => {
+    const state = createAppState({ planner: { '2026-08-17': { Dinner: ['tacos', 'tacos'] } } })
+    const result = buildShoppingList(state, weekDates, {}, { 'ground-beef': 1, tortillas: 8 })
+    expect(result.find(({ ingredientId }) => ingredientId === 'ground-beef')).toMatchObject({ quantity: 1 })
+    expect(result.find(({ ingredientId }) => ingredientId === 'tortillas')).toMatchObject({ quantity: 8 })
+  })
 })
 
 describe('formatHistoryDate', () => {

@@ -79,6 +79,10 @@ describe('usePlannerController week copying', () => {
         '2026-08-17': { eggs: 2 },
         '2026-08-24': { milk: 1 },
       },
+      shoppingDismissedByWeek: {
+        '2026-08-17': { eggs: 2 },
+        '2026-08-24': { milk: 1 },
+      },
     })
     const { result, updateWithUndo } = setup(state)
 
@@ -96,6 +100,7 @@ describe('usePlannerController week copying', () => {
     })
     expect(next.plannerRowsByWeek['2026-08-17']).toEqual([{ id: copiedRowId, label: 'Snack' }])
     expect(next.shoppingPurchasesByWeek).toEqual({ '2026-08-24': { milk: 1 } })
+    expect(next.shoppingDismissedByWeek).toEqual({ '2026-08-24': { milk: 1 } })
     expect(next.planner['2026-08-24']).toEqual({ Dinner: ['chicken-rice'] })
     expect(updateWithUndo.mock.calls[0][1]).toBe('Copied Aug 10 – Aug 16')
   })
@@ -278,6 +283,10 @@ describe('usePlannerController notes and custom rows', () => {
         '2026-08-17': [{ id: 'snack', label: 'Snack' }],
         '2026-08-24': [{ id: 'other', label: 'Other' }],
       },
+      shoppingDismissedByWeek: {
+        '2026-08-17': { eggs: 2 },
+        '2026-08-24': { milk: 1 },
+      },
     })
     const { result, updateWithUndo } = setup(state)
 
@@ -286,6 +295,7 @@ describe('usePlannerController notes and custom rows', () => {
     expect(next.planner).toEqual({ '2026-08-24': { Dinner: ['spaghetti'] } })
     expect(next.plannerNotes).toEqual({ '2026-08-24': { Dinner: 'Keep' } })
     expect(next.plannerRowsByWeek).toEqual({ '2026-08-24': [{ id: 'other', label: 'Other' }] })
+    expect(next.shoppingDismissedByWeek).toEqual({ '2026-08-24': { milk: 1 } })
   })
 
   it('safely ignores actions without state', () => {

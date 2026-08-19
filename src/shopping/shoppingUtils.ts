@@ -65,26 +65,9 @@ export function buildShoppingList(
   state: AppState,
   weekDates: Date[],
   purchases: Record<string, number>,
+  dismissed: Record<string, number> = {},
 ): ShoppingItem[] {
-  const required = new Map<string, number>()
-
-  for (const day of weekDates.map(dateKey)) {
-    const dayPlan = state.planner[day] ?? {}
-
-    for (const mealIds of Object.values(dayPlan)) {
-      for (const mealId of mealIds ?? []) {
-        const meal = state.meals.find((m) => m.id === mealId) ?? null
-        if (!meal) continue
-
-        for (const item of meal.ingredients) {
-          required.set(
-            item.ingredientId,
-            (required.get(item.ingredientId) ?? 0) + item.quantity,
-          )
-        }
-      }
-    }
-  }
+  const required = buildRequiredShoppingQuantities(state, weekDates)
 
   const ingredientIds = new Set([
     ...required.keys(),
@@ -99,7 +82,8 @@ export function buildShoppingList(
 
     const requiredQuantity = required.get(ingredientId) ?? 0
     const purchasedQuantity = purchases[ingredientId] ?? 0
-    const outstandingQuantity = Math.max(requiredQuantity - purchasedQuantity, 0)
+    const dismissedQuantity = dismissed[ingredientId] ?? 0
+    const outstandingQuantity = Math.max(requiredQuantity - purchasedQuantity - dismissedQuantity, 0)
 
     if (purchasedQuantity > 0) {
       lines.push({
@@ -127,12 +111,33 @@ export function buildShoppingList(
   }
 
   return lines.sort((a, b) => {
-    if (a.checked !== b.checked) {
-      return Number(a.checked) - Number(b.checked)
-    }
-
+    if (a.checked !== b.checked) return Number(a.checked) - Number(b.checked)
     return a.name.localeCompare(b.name)
   })
+}
+
+export function buildRequiredShoppingQuantities(state: AppState, weekDates: Date[]) {
+  const required = new Map<string, number>()
+
+  for (const day of weekDates.map(dateKey)) {
+    const dayPlan = state.planner[day] ?? {}
+
+    for (const mealIds of Object.values(dayPlan)) {
+      for (const mealId of mealIds ?? []) {
+        const meal = state.meals.find((m) => m.id === mealId) ?? null
+        if (!meal) continue
+
+        for (const item of meal.ingredients) {
+          required.set(
+            item.ingredientId,
+            (required.get(item.ingredientId) ?? 0) + item.quantity,
+          )
+        }
+      }
+    }
+  }
+
+  return required
 }
 
 export function formatHistoryDate(value: string) {

@@ -1,9 +1,10 @@
 import { seedState } from '../data'
 import type { AppState } from '../types'
+import { clone } from '../utils/clone'
 
 export function createAppState(overrides: Partial<AppState> = {}): AppState {
   return {
-    ...JSON.parse(JSON.stringify(seedState)) as AppState,
+    ...clone(seedState),
     ...overrides,
   }
 }

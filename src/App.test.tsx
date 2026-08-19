@@ -97,6 +97,7 @@ beforeEach(() => {
     shopping: [],
     manualShopping: [],
     orderedShoppingCategories: [],
+    clearShoppingList: vi.fn(),
   }
 })
 
@@ -108,7 +109,7 @@ describe('App', () => {
     expect(screen.queryByText('Planner view')).not.toBeInTheDocument()
   })
 
-  it('navigates primary views and delegates clearing the week', async () => {
+  it('shows the action for the active view and delegates clearing', async () => {
     const user = userEvent.setup()
     render(<App />)
     expect(screen.getByText('Planner view')).toBeInTheDocument()
@@ -118,8 +119,12 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /Meals/ }))
     expect(screen.getByText('Meals view')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Clear/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Shopping/ }))
     expect(screen.getByText('Shopping view')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear week' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Clear shopping list' }))
+    expect(mocks.shopping.clearShoppingList).toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: /Planner/ }))
     expect(screen.getByText('Planner view')).toBeInTheDocument()
   })

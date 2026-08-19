@@ -24,6 +24,7 @@ describe('normalizeState', () => {
     expect(result.proteinCategories).toEqual(seedProteinCategories)
     expect(result.planner).toEqual({})
     expect(result.manualShoppingItems).toEqual({})
+    expect(result.shoppingDismissedByWeek).toEqual({})
     expect(result.shoppingCategories?.map(({ id }) => id)).toEqual([
       'produce', 'meat', 'dairy', 'frozen', 'aisle',
     ])

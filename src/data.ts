@@ -17,6 +17,7 @@ export const seedState: AppState = {
   shoppingHistory: [],
   plannerNotes: {},
   shoppingPurchasesByWeek: {},
+  shoppingDismissedByWeek: {},
   ingredients: [
     { id: 'eggs', name: 'Eggs', unit: 'each', proteinCategoryId: null },
     { id: 'milk', name: 'Milk', unit: 'cup', proteinCategoryId: null },

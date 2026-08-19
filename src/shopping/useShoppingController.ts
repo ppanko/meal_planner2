@@ -5,6 +5,7 @@ import { dateKey } from '../utils/dates'
 import { slug } from '../utils/text'
 import {
   buildShoppingList,
+  buildRequiredShoppingQuantities,
   defaultShoppingCategoryIds,
   getOrderedShoppingCategories,
   upsertShoppingHistory,
@@ -27,7 +28,12 @@ export function useShoppingController({
 
   const shopping = useMemo(
     () => state
-      ? buildShoppingList(state, weekDates, state.shoppingPurchasesByWeek[shoppingWeekKey] ?? {})
+      ? buildShoppingList(
+          state,
+          weekDates,
+          state.shoppingPurchasesByWeek[shoppingWeekKey] ?? {},
+          state.shoppingDismissedByWeek[shoppingWeekKey] ?? {},
+        )
       : [],
     [state, weekDates, shoppingWeekKey],
   )
@@ -331,6 +337,29 @@ export function useShoppingController({
     }, 'Reset checked shopping items')
   }
 
+  function clearShoppingList() {
+    if (!state || (shopping.length === 0 && manualShopping.length === 0)) return
+    if (!confirm('Clear all items from the current shopping list?')) return
+
+    const shoppingPurchasesByWeek = { ...state.shoppingPurchasesByWeek }
+    delete shoppingPurchasesByWeek[shoppingWeekKey]
+
+    const manualShoppingItems = { ...state.manualShoppingItems }
+    delete manualShoppingItems[shoppingWeekKey]
+
+    const shoppingDismissedByWeek = { ...state.shoppingDismissedByWeek }
+    const required = Object.fromEntries(buildRequiredShoppingQuantities(state, weekDates))
+    if (Object.keys(required).length > 0) shoppingDismissedByWeek[shoppingWeekKey] = required
+    else delete shoppingDismissedByWeek[shoppingWeekKey]
+
+    updateWithUndo({
+      ...state,
+      shoppingPurchasesByWeek,
+      shoppingDismissedByWeek,
+      manualShoppingItems,
+    }, 'Cleared shopping list')
+  }
+
   return {
     shopping,
     manualShopping,
@@ -346,5 +375,6 @@ export function useShoppingController({
     toggleManualShoppingItem,
     deleteManualShoppingItem,
     clearCheckedShopping,
+    clearShoppingList,
   }
 }

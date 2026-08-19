@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import type { AppView } from '../appTypes'
 import type { AppState, Ingredient, Meal, Planner, ProteinCategory } from '../types'
-
-type View = 'planner' | 'meals' | 'shopping'
+import { clone } from '../utils/clone'
 
 type MealsControllerOptions = {
   state: AppState | null
-  setView: (view: View) => void
+  setView: (view: AppView) => void
   update: (next: AppState) => void
   updateWithUndo: (next: AppState, message: string) => void
 }
@@ -89,7 +89,7 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     if (!state) return
     if (!confirm('Delete this meal? It will also be removed from the planner.')) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     for (const day of Object.keys(planner)) {
       for (const rowId of Object.keys(planner[day] ?? {})) {
         planner[day][rowId] = (planner[day][rowId] ?? []).filter((id) => id !== mealId)
@@ -122,17 +122,20 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     )
     if (isUsed) return
 
-    const shoppingPurchasesByWeek: AppState['shoppingPurchasesByWeek'] = JSON.parse(
-      JSON.stringify(state.shoppingPurchasesByWeek),
-    )
+    const shoppingPurchasesByWeek: AppState['shoppingPurchasesByWeek'] = clone(state.shoppingPurchasesByWeek)
     for (const purchases of Object.values(shoppingPurchasesByWeek)) {
       delete purchases[ingredientId]
+    }
+    const shoppingDismissedByWeek = clone(state.shoppingDismissedByWeek)
+    for (const dismissed of Object.values(shoppingDismissedByWeek)) {
+      delete dismissed[ingredientId]
     }
 
     updateWithUndo({
       ...state,
       ingredients: state.ingredients.filter((item) => item.id !== ingredientId),
       shoppingPurchasesByWeek,
+      shoppingDismissedByWeek,
     }, `Deleted ingredient ${ingredient.name}`)
   }
 

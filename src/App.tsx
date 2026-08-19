@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
+import type { AppView } from './appTypes'
 import { PlannerView } from './planner/PlannerView'
 import { MealCard } from './planner/PlannerSlots'
 import { usePlannerController } from './planner/usePlannerController'
@@ -14,7 +15,7 @@ import { usePersistentAppState } from './state/usePersistentAppState'
 import { formatRange, getWeekDates, getWeekDatesForDateKey } from './utils/dates'
 
 function App() {
-  const [view, setView] = useState<'planner' | 'meals' | 'shopping'>('planner')
+  const [view, setView] = useState<AppView>('planner')
   const [weekOffset, setWeekOffset] = useState(0)
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
 
@@ -62,7 +63,8 @@ function App() {
             <div className="eyebrow">PERSONAL</div>
             <h1>Meal Planner</h1>
           </div>
-          <button className="text-button" onClick={planner.clearWeek}>Clear week</button>
+          {view === 'planner' && <button className="text-button" onClick={planner.clearWeek}>Clear week</button>}
+          {view === 'shopping' && <button className="text-button" onClick={shopping.clearShoppingList}>Clear shopping list</button>}
         </header>
 
         <main className="content">

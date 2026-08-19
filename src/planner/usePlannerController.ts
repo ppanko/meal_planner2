@@ -1,17 +1,17 @@
 import { useMemo, useState } from 'react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
+import type { AppView } from '../appTypes'
 import type { AppState, Meal, Planner, PlannerRow } from '../types'
+import { clone } from '../utils/clone'
 import { dateKey, formatRange, getWeekDates, getWeekDatesForDateKey } from '../utils/dates'
 import { getPlannerRows } from './plannerUtils'
-
-type View = 'planner' | 'meals' | 'shopping'
 
 type PlannerControllerOptions = {
   state: AppState | null
   weekOffset: number
   weekDates: Date[]
-  setView: (view: View) => void
+  setView: (view: AppView) => void
   update: (next: AppState) => void
   updateWithUndo: (next: AppState, message: string) => void
 }
@@ -99,8 +99,8 @@ export function usePlannerController({
     })
 
     const remapRowId = (rowId: string) => customRowIdMap.get(rowId) ?? rowId
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
-    const plannerNotes = JSON.parse(JSON.stringify(state.plannerNotes)) as AppState['plannerNotes']
+    const planner = clone(state.planner)
+    const plannerNotes = clone(state.plannerNotes)
 
     for (let i = 0; i < 7; i += 1) {
       const sourceDayKey = dateKey(sourceWeekDates[i])
@@ -143,6 +143,8 @@ export function usePlannerController({
 
     const shoppingPurchasesByWeek = { ...state.shoppingPurchasesByWeek }
     delete shoppingPurchasesByWeek[targetWeekKey]
+    const shoppingDismissedByWeek = { ...state.shoppingDismissedByWeek }
+    delete shoppingDismissedByWeek[targetWeekKey]
 
     updateWithUndo(
       {
@@ -151,6 +153,7 @@ export function usePlannerController({
         plannerNotes,
         plannerRowsByWeek,
         shoppingPurchasesByWeek,
+        shoppingDismissedByWeek,
       },
       `Copied ${formatRange(sourceWeekDates)}`,
     )
@@ -181,7 +184,7 @@ export function usePlannerController({
     const validRowIds = new Set(getPlannerRows(state, weekDatesForDay).map((row) => row.id))
     if (!validRowIds.has(rowId)) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     planner[day] ??= {}
 
     const current = planner[day][rowId] ?? []
@@ -213,7 +216,7 @@ export function usePlannerController({
   function removeMeal(day: string, rowId: string, mealId: string) {
     if (!state) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     const current = planner[day]?.[rowId] ?? []
     const next = current.filter((id) => id !== mealId)
 
@@ -233,7 +236,7 @@ export function usePlannerController({
   function addMealToSlot(day: string, rowId: string, meal: Meal) {
     if (!state) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     planner[day] ??= {}
 
     const current = planner[day][rowId] ?? []
@@ -246,7 +249,7 @@ export function usePlannerController({
   function addMeal(meal: Meal) {
     if (!state) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     const currentWeekKeys = weekDates.map(dateKey)
     const rows = getPlannerRows(state, weekDates)
 
@@ -297,7 +300,7 @@ export function usePlannerController({
     const hasMeals = weekDates.some((date) => (state.planner[dateKey(date)]?.[rowId]?.length ?? 0) > 0)
     if (hasMeals && !confirm(`Remove "${row.label}" and its planned meals from this week?`)) return
 
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     const plannerNotes = { ...state.plannerNotes }
 
     for (const date of weekDates) {
@@ -329,7 +332,7 @@ export function usePlannerController({
     if (!state) return
 
     const weekKeys = weekDates.map(dateKey)
-    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    const planner: Planner = clone(state.planner)
     const plannerNotes = { ...state.plannerNotes }
 
     for (const dayKey of weekKeys) {
@@ -342,12 +345,15 @@ export function usePlannerController({
     const weekKey = dateKey(weekDates[0])
     const plannerRowsByWeek = { ...state.plannerRowsByWeek }
     delete plannerRowsByWeek[weekKey]
+    const shoppingDismissedByWeek = { ...state.shoppingDismissedByWeek }
+    delete shoppingDismissedByWeek[weekKey]
 
     updateWithUndo({
       ...state,
       planner,
       plannerRowsByWeek,
       plannerNotes,
+      shoppingDismissedByWeek,
     }, `Cleared ${formatRange(weekDates)}`)
   }
 

@@ -86,6 +86,7 @@ export type AppState = {
   shoppingHistory: ShoppingHistoryItem[]
   plannerNotes: Record<string, Record<string, string>>
   shoppingPurchasesByWeek: Record<string, Record<string, number>>
+  shoppingDismissedByWeek: Record<string, Record<string, number>>
   shoppingCategories?: ShoppingCategory[]
   shoppingCategoryOrder?: string[]
 }

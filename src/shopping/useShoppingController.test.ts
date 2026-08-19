@@ -283,6 +283,47 @@ describe('useShoppingController manual items and history', () => {
     expect(updateWithUndo.mock.calls[0][1]).toBe('Reset checked shopping items')
   })
 
+  it('clears the current list with undo while preserving history and other weeks', () => {
+    const state = createAppState({
+      planner: { '2026-08-17': { Dinner: ['tacos'] } },
+      shoppingPurchasesByWeek: {
+        '2026-08-17': { 'ground-beef': 1 },
+        '2026-08-24': { milk: 1 },
+      },
+      manualShoppingItems: {
+        '2026-08-17': [{ id: 'manual', name: 'Bagels', checked: false }],
+        '2026-08-24': [{ id: 'later', name: 'Milk', checked: false }],
+      },
+      shoppingHistory: [{ id: 'history', name: 'Coffee', lastPurchasedAt: '2026-08-01' }],
+    })
+    const { result, updateWithUndo } = setup(state)
+
+    act(() => result.current.clearShoppingList())
+    const next = updateWithUndo.mock.calls[0][0] as AppState
+    expect(next.shoppingPurchasesByWeek).toEqual({ '2026-08-24': { milk: 1 } })
+    expect(next.manualShoppingItems).toEqual({ '2026-08-24': state.manualShoppingItems['2026-08-24'] })
+    expect(next.shoppingDismissedByWeek['2026-08-17']).toMatchObject({
+      'ground-beef': 1,
+      tortillas: 8,
+      tomatoes: 2,
+    })
+    expect(next.shoppingHistory).toEqual(state.shoppingHistory)
+    expect(updateWithUndo.mock.calls[0][1]).toBe('Cleared shopping list')
+  })
+
+  it('does not clear an empty list or clear after confirmation is cancelled', () => {
+    const empty = setup()
+    act(() => empty.result.current.clearShoppingList())
+    expect(empty.updateWithUndo).not.toHaveBeenCalled()
+
+    const populated = setup(createAppState({ manualShoppingItems: {
+      '2026-08-17': [{ id: 'manual', name: 'Bagels', checked: false }],
+    } }))
+    vi.mocked(window.confirm).mockReturnValue(false)
+    act(() => populated.result.current.clearShoppingList())
+    expect(populated.updateWithUndo).not.toHaveBeenCalled()
+  })
+
   it('safely handles unavailable state and missing manual targets', () => {
     const unavailable = setup(null)
     act(() => unavailable.result.current.addManualShoppingItem('Milk'))

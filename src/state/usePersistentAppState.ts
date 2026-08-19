@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppState } from '../types'
+import { clone } from '../utils/clone'
 import { loadState, saveState, subscribeToRemoteState } from '../storage'
 
 export type UndoAction = {
@@ -62,7 +63,7 @@ export function usePersistentAppState() {
       window.clearTimeout(undoTimerRef.current)
     }
 
-    const snapshot: AppState = JSON.parse(JSON.stringify(state))
+    const snapshot = clone(state)
     setUndoAction({ message, state: snapshot })
     undoTimerRef.current = window.setTimeout(() => {
       setUndoAction(null)
