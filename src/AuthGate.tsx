@@ -7,14 +7,16 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [checking, setChecking] = useState(true)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
-  const [sending, setSending] = useState(false)
+  const [signingIn, setSigningIn] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
     void supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return
+
       setSession(data.session)
       setChecking(false)
     })
@@ -30,8 +32,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const sessionEmail = session?.user.email?.toLowerCase() ?? ''
-  const sessionAllowed = sessionEmail && (allowedEmails.length === 0 || allowedEmails.includes(sessionEmail))
+  const sessionEmail = session?.user.email?.trim().toLowerCase() ?? ''
+  const sessionAllowed =
+    Boolean(sessionEmail) &&
+    (allowedEmails.length === 0 || allowedEmails.includes(sessionEmail))
 
   useEffect(() => {
     if (session && !sessionAllowed) {
@@ -40,34 +44,37 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [session, sessionAllowed])
 
-  async function sendMagicLink(event: FormEvent) {
+  async function signIn(event: FormEvent) {
     event.preventDefault()
     setMessage('')
 
-    const normalized = email.trim().toLowerCase()
-    if (!normalized) return
+    const normalizedEmail = email.trim().toLowerCase()
 
-    if (allowedEmails.length > 0 && !allowedEmails.includes(normalized)) {
+    if (!normalizedEmail || !password) return
+
+    if (
+      allowedEmails.length > 0 &&
+      !allowedEmails.includes(normalizedEmail)
+    ) {
       setMessage('This email is not authorized for this meal planner.')
       return
     }
 
-    setSending(true)
+    setSigningIn(true)
 
-    const redirectTo = new URL(import.meta.env.BASE_URL, window.location.origin).toString()
-    const { error } = await supabase.auth.signInWithOtp({
-      email: normalized,
-      options: { emailRedirectTo: redirectTo },
+    const { error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
     })
 
-    setSending(false)
+    setSigningIn(false)
 
     if (error) {
-      setMessage(error.message)
+      setMessage('Unable to sign in. Check your email and password.')
       return
     }
 
-    setMessage('Check your email and tap the sign-in link. You should only need to do this once on this device.')
+    setPassword('')
   }
 
   if (!supabaseConfigured) {
@@ -76,14 +83,21 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         <div className="auth-card">
           <div className="eyebrow">SETUP REQUIRED</div>
           <h1>Meal Planner</h1>
-          <p>Supabase is not configured. Copy <code>.secrets.example</code> to <code>.secrets</code> and fill in the project values.</p>
+          <p>
+            Supabase is not configured. Copy <code>.secrets.example</code> to{' '}
+            <code>.secrets</code> and fill in the project values.
+          </p>
         </div>
       </div>
     )
   }
 
   if (checking) {
-    return <div className="loading-screen"><div className="loading-card">Opening Meal Planner…</div></div>
+    return (
+      <div className="loading-screen">
+        <div className="loading-card">Opening Meal Planner…</div>
+      </div>
+    )
   }
 
   if (session && sessionAllowed) {
@@ -92,16 +106,19 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   return (
     <div className="auth-screen">
-      <form className="auth-card" onSubmit={sendMagicLink}>
+      <form className="auth-card" onSubmit={signIn}>
         <div className="eyebrow">HOUSEHOLD</div>
         <h1>Meal Planner</h1>
-        <p>Enter your household email. We’ll send a sign-in link; the session stays saved on this device.</p>
+        <p>
+          Sign in once on this device. Your session will stay saved unless you
+          explicitly sign out or clear browser data.
+        </p>
 
         <label>
           Email
           <input
             type="email"
-            autoComplete="email"
+            autoComplete="username"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
@@ -110,8 +127,23 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           />
         </label>
 
-        <button className="primary auth-submit" type="submit" disabled={sending}>
-          {sending ? 'Sending…' : 'Email sign-in link'}
+        <label>
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </label>
+
+        <button
+          className="primary auth-submit"
+          type="submit"
+          disabled={signingIn}
+        >
+          {signingIn ? 'Signing in…' : 'Sign in'}
         </button>
 
         {message && <div className="auth-message">{message}</div>}

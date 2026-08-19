@@ -207,6 +207,19 @@ function App() {
     update({ ...state, planner, plannerNotes })
   }
 
+  function addMealToSlot(day: string, rowId: string, meal: Meal) {
+    if (!state) return
+
+    const planner: Planner = JSON.parse(JSON.stringify(state.planner))
+    planner[day] ??= {}
+
+    const current = planner[day][rowId] ?? []
+    if (current.length >= 3) return
+
+    planner[day][rowId] = [...current, meal.id]
+    update({ ...state, planner })
+  }
+
   function addMeal(meal: Meal) {
     if (!state) return
 
@@ -545,6 +558,7 @@ function App() {
               weekOffset={weekOffset}
               setWeekOffset={setWeekOffset}
               addMeal={addMeal}
+              addMealToSlot={addMealToSlot}
               removeMeal={removeMeal}
               updatePlannerNote={updatePlannerNote}
               addPlannerRow={addPlannerRow}
@@ -682,6 +696,7 @@ function PlannerView({
   weekOffset,
   setWeekOffset,
   addMeal,
+  addMealToSlot,
   removeMeal,
   updatePlannerNote,
   addPlannerRow,
@@ -693,6 +708,7 @@ function PlannerView({
   weekOffset: number
   setWeekOffset: (n: number) => void
   addMeal: (meal: Meal) => void
+  addMealToSlot: (day: string, rowId: string, meal: Meal) => void
   removeMeal: (day: string, rowId: string, mealId: string) => void
   updatePlannerNote: (day: string, rowId: string, note: string) => void
   addPlannerRow: (label: string) => void
@@ -704,6 +720,7 @@ function PlannerView({
   const [showMealBrowser, setShowMealBrowser] = useState(false)
   const [newRowLabel, setNewRowLabel] = useState('')
   const [showRowEditor, setShowRowEditor] = useState(false)
+  const [mobilePickerSlot, setMobilePickerSlot] = useState<{ day: string; rowId: string; label: string } | null>(null)
 
   const filteredMeals = useMemo(() => {
     const query = mealSearch.trim().toLowerCase()
@@ -734,7 +751,7 @@ function PlannerView({
       </div>
 
       <button
-        className="mobile-meal-browser-toggle"
+        className="mobile-meal-browser-toggle legacy-mobile-browser-toggle"
         type="button"
         onClick={() => setShowMealBrowser((open) => !open)}
       >
@@ -742,7 +759,7 @@ function PlannerView({
         <span>{filteredMeals.length}</span>
       </button>
 
-      <div className="planner-layout">
+      <div className="planner-layout desktop-planner-layout">
         <aside className={`meal-library ${showMealBrowser ? 'mobile-open' : ''}`}>
           <div className="meal-browser-header">
             <h3>Meals</h3>
@@ -938,7 +955,178 @@ function PlannerView({
           </div>
         </div>
       </div>
+
+      <div className="mobile-planner">
+        <div className="mobile-planner-days">
+          {weekDates.map((date, dayIndex) => {
+            const dayKeyValue = dateKey(date)
+            return (
+              <section className="mobile-day-card" key={dayKeyValue}>
+                <div className="mobile-day-header">
+                  <span>{dayShort[dayIndex]}</span>
+                  <strong>{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</strong>
+                </div>
+
+                {getPlannerRows(state, weekDates).map((row, rowIndex) => {
+                  const mealIds = getSlotMealIds(state.planner, dayKeyValue, row.id)
+                  const meals = mealIds
+                    .map((mealId) => state.meals.find((meal) => meal.id === mealId))
+                    .filter((meal): meal is Meal => Boolean(meal))
+                  const isCustom = row.id.startsWith('custom-')
+
+                  return (
+                    <MobilePlannerSlot
+                      key={`${dayKeyValue}-${row.id}`}
+                      label={row.label}
+                      firstCustom={isCustom && rowIndex === defaultPlannerRows.length}
+                      meals={meals}
+                      note={state.plannerNotes[dayKeyValue]?.[row.id] ?? ''}
+                      ingredients={state.ingredients}
+                      proteinCategories={proteinCategories}
+                      onAdd={() => {
+                        if (meals.length < 3) {
+                          setMobilePickerSlot({
+                            day: dayKeyValue,
+                            rowId: row.id,
+                            label: `${dayShort[dayIndex]} · ${row.label}`,
+                          })
+                        }
+                      }}
+                      onRemoveMeal={(mealId) => removeMeal(dayKeyValue, row.id, mealId)}
+                      onNoteChange={(note) => updatePlannerNote(dayKeyValue, row.id, note)}
+                    />
+                  )
+                })}
+              </section>
+            )
+          })}
+        </div>
+      </div>
+
+      {mobilePickerSlot && (
+        <div className="mobile-meal-picker-backdrop" onClick={() => setMobilePickerSlot(null)}>
+          <div
+            className="mobile-meal-picker"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mobile-picker-handle" />
+            <div className="mobile-picker-header">
+              <div>
+                <div className="eyebrow">ADD MEAL</div>
+                <h3>{mobilePickerSlot.label}</h3>
+              </div>
+              <button type="button" className="mobile-picker-close" onClick={() => setMobilePickerSlot(null)}>×</button>
+            </div>
+
+            <div className="meal-search-wrap mobile-picker-search">
+              <span aria-hidden="true">⌕</span>
+              <input
+                className="meal-search"
+                type="search"
+                value={mealSearch}
+                onChange={(event) => setMealSearch(event.target.value)}
+                placeholder="Search meals…"
+                autoFocus
+              />
+            </div>
+
+            <div className="protein-filter mobile-picker-filters">
+              <button type="button" className={proteinFilter === 'All' ? 'active' : ''} onClick={() => setProteinFilter('All')}>All</button>
+              {proteinCategories.map((category) => (
+                <button key={category.id} type="button" className={proteinFilter === category.id ? 'active' : ''} onClick={() => setProteinFilter(category.id)}>
+                  <ProteinDot category={category} />{category.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="mobile-picker-list">
+              {filteredMeals.map((meal) => (
+                <button
+                  type="button"
+                  className="mobile-picker-meal"
+                  key={meal.id}
+                  onClick={() => {
+                    addMealToSlot(mobilePickerSlot.day, mobilePickerSlot.rowId, meal)
+                    setMobilePickerSlot(null)
+                  }}
+                >
+                  <MealProteinDots meal={meal} ingredients={state.ingredients} proteinCategories={proteinCategories} />
+                  <span>{meal.name}</span>
+                  <b>+</b>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
+  )
+}
+
+
+function MobilePlannerSlot({
+  label,
+  firstCustom,
+  meals,
+  note,
+  ingredients,
+  proteinCategories,
+  onAdd,
+  onRemoveMeal,
+  onNoteChange,
+}: {
+  label: string
+  firstCustom: boolean
+  meals: Meal[]
+  note: string
+  ingredients: Ingredient[]
+  proteinCategories: ProteinCategory[]
+  onAdd: () => void
+  onRemoveMeal: (mealId: string) => void
+  onNoteChange: (note: string) => void
+}) {
+  const [editingNote, setEditingNote] = useState(false)
+  const [draftNote, setDraftNote] = useState(note)
+
+  useEffect(() => setDraftNote(note), [note])
+
+  return (
+    <div className={`mobile-planner-slot ${firstCustom ? 'first-custom-mobile-slot' : ''}`}>
+      <div className="mobile-slot-label">{label}</div>
+      <div className="mobile-slot-content">
+        {meals.map((meal) => (
+          <div className="mobile-planned-meal" key={meal.id}>
+            <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
+            <span>{meal.name}</span>
+            <button type="button" onClick={() => onRemoveMeal(meal.id)}>×</button>
+          </div>
+        ))}
+
+        {meals.length < 3 && (
+          <button type="button" className="mobile-add-meal" onClick={onAdd}>
+            + {meals.length === 0 ? 'Add meal' : 'Add another meal'}
+          </button>
+        )}
+
+        {note && !editingNote && <div className="mobile-slot-note">{note}</div>}
+
+        {editingNote ? (
+          <div className="mobile-note-editor">
+            <textarea value={draftNote} onChange={(e) => setDraftNote(e.target.value)} placeholder="Add a note…" autoFocus />
+            <div>
+              <button type="button" onClick={() => { setDraftNote(note); setEditingNote(false) }}>Cancel</button>
+              <button type="button" className="primary" onClick={() => { onNoteChange(draftNote); setEditingNote(false) }}>Save</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="mobile-note-trigger" onClick={() => setEditingNote(true)}>
+            {note ? 'Edit note' : '+ Note'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

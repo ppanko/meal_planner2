@@ -4,7 +4,9 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
 
 if (!supabaseUrl || !supabaseKey) {
-  console.warn('Supabase is not configured. Create .secrets from .secrets.example and add the Supabase project values.')
+  console.warn(
+    'Supabase is not configured. Create .secrets from .secrets.example and add the Supabase project values.',
+  )
 }
 
 export const supabase = createClient(
@@ -14,7 +16,7 @@ export const supabase = createClient(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   },
 )
@@ -26,4 +28,5 @@ export const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS ?? '')
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean)
 
-export const sharedStateId = import.meta.env.VITE_SUPABASE_STATE_ID?.trim() || 'household'
+export const sharedStateId =
+  import.meta.env.VITE_SUPABASE_STATE_ID?.trim() || 'household'
