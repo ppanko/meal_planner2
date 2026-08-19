@@ -62,18 +62,22 @@ describe('ShoppingView', () => {
     expect(screen.getByRole('heading', { name: 'Aug 17 – Aug 23' })).toBeInTheDocument()
     expect(screen.getByText('2 items remaining')).toBeInTheDocument()
     expect(screen.getAllByText('Bakery').some((element) => element.closest('.shopping-category-label'))).toBe(true)
-    expect(screen.getAllByText('Uncategorized')).not.toHaveLength(0)
     expect(screen.getByText('Additional')).toBeInTheDocument()
     expect(screen.getAllByText('Purchased')).toHaveLength(2)
+    expect(screen.queryByLabelText('Shopping category for Bagels')).not.toBeInTheDocument()
+
+    const manualRow = screen.getByText('Bagels').closest('.manual-shopping-item') as HTMLElement
+    expect(manualRow.querySelector(':scope > .shopping-name')).toBeInTheDocument()
+    expect(manualRow.querySelector(':scope > .manual-shopping-actions')).toContainElement(
+      screen.getByRole('button', { name: 'Delete Bagels' }),
+    )
 
     await user.click(screen.getByText('Eggs').closest('label')!)
     expect(callbacks.onToggle).toHaveBeenCalledWith('outstanding:eggs')
 
     await user.click(screen.getByLabelText('Mark Bagels purchased'))
-    await user.selectOptions(screen.getByLabelText('Shopping category for Bagels'), 'dairy')
     await user.click(screen.getByRole('button', { name: 'Delete Bagels' }))
     expect(callbacks.onToggleManual).toHaveBeenCalledWith('manual')
-    expect(callbacks.onSetManualCategory).toHaveBeenCalledWith('manual', 'dairy')
     expect(callbacks.onDeleteManual).toHaveBeenCalledWith('manual')
 
     await user.click(screen.getByRole('button', { name: 'Clear checks' }))
@@ -120,6 +124,12 @@ describe('ShoppingView', () => {
     expect(callbacks.onMoveShoppingCategory).toHaveBeenCalledWith('dairy', -1)
     expect(callbacks.onMoveShoppingCategory).toHaveBeenCalledWith('custom-bakery', -1)
     expect(callbacks.onDeleteShoppingCategory).toHaveBeenCalledWith('custom-bakery')
+
+    await user.selectOptions(
+      within(dialog).getByLabelText('Shopping category for Bagels'),
+      'dairy',
+    )
+    expect(callbacks.onSetManualCategory).toHaveBeenCalledWith('manual', 'dairy')
 
     await user.type(within(dialog).getByLabelText('New shopping category'), '  Bulk ')
     await user.click(within(dialog).getByRole('button', { name: 'Add category' }))

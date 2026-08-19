@@ -140,6 +140,11 @@ export function ShoppingView({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [ingredients, ingredientSearch])
 
+  const organizedManualItems = useMemo(
+    () => [...manualItems].sort((a, b) => a.name.localeCompare(b.name)),
+    [manualItems],
+  )
+
   function groupShoppingItems(items: CombinedShoppingItem[]): ShoppingGroup[] {
     const groups: ShoppingGroup[] = shoppingCategories.map((category) => ({
       id: category.id,
@@ -204,19 +209,6 @@ export function ShoppingView({
           {item.name}
         </span>
         <div className="manual-shopping-actions">
-          {!item.checked && (
-            <select
-              className="manual-shopping-category"
-              value={item.categoryId ?? ''}
-              onChange={(event) => onSetManualCategory(item.id, event.target.value || null)}
-              aria-label={`Shopping category for ${item.name}`}
-            >
-              <option value="">Uncategorized</option>
-              {shoppingCategories.map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </select>
-          )}
           <button
             className="shopping-delete"
             type="button"
@@ -469,6 +461,37 @@ export function ShoppingView({
                 <button type="submit" className="secondary">Add category</button>
               </form>
             </section>
+
+            {organizedManualItems.length > 0 && (
+              <section className="shopping-category-manager-section manual-category-section">
+                <div className="shopping-category-manager-heading">
+                  <div>
+                    <h3>Current list items</h3>
+                    <p>Choose categories for items you added manually this week.</p>
+                  </div>
+                </div>
+
+                <div className="shopping-category-ingredient-list">
+                  {organizedManualItems.map((item) => (
+                    <label className="shopping-category-ingredient-row" key={item.id}>
+                      <span>{item.name}</span>
+                      <select
+                        value={item.shoppingCategoryId ?? ''}
+                        onChange={(event) =>
+                          onSetManualCategory(item.id, event.target.value || null)
+                        }
+                        aria-label={`Shopping category for ${item.name}`}
+                      >
+                        <option value="">Uncategorized</option>
+                        {shoppingCategories.map((category) => (
+                          <option key={category.id} value={category.id}>{category.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="shopping-category-manager-section ingredient-category-section">
               <div className="shopping-category-manager-heading">
