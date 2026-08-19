@@ -1,4 +1,5 @@
-import type { AppState, Ingredient, Meal } from './types'
+import { defaultShoppingCategories } from './types'
+import type { AppState, Ingredient, Meal, ShoppingCategory } from './types'
 import { seedProteinCategories, seedState } from './data'
 import { sharedStateId, supabase, supabaseConfigured } from './supabase'
 
@@ -12,6 +13,42 @@ function cloneSeed(): AppState {
   return JSON.parse(JSON.stringify(seedState)) as AppState
 }
 
+function normalizeShoppingCategories(state: Partial<AppState>): {
+  shoppingCategories: ShoppingCategory[]
+  shoppingCategoryOrder: string[]
+} {
+  const defaultIds = new Set(defaultShoppingCategories.map((category) => category.id))
+  const requested = (state.shoppingCategories ?? [])
+    .filter((category): category is ShoppingCategory =>
+      Boolean(category && typeof category.id === 'string' && category.id.trim() && typeof category.name === 'string' && category.name.trim()),
+    )
+    .map((category) => ({ id: category.id.trim(), name: category.name.trim() }))
+
+  const requestedById = new Map(requested.map((category) => [category.id, category]))
+  const customCategories = requested.filter((category) => !defaultIds.has(category.id))
+  const shoppingCategories = [
+    ...defaultShoppingCategories.map((category) => requestedById.get(category.id) ?? { ...category }),
+    ...customCategories,
+  ]
+
+  const validIds = new Set(shoppingCategories.map((category) => category.id))
+  const seen = new Set<string>()
+  const shoppingCategoryOrder: string[] = []
+
+  for (const categoryId of state.shoppingCategoryOrder ?? []) {
+    if (!validIds.has(categoryId) || seen.has(categoryId)) continue
+    seen.add(categoryId)
+    shoppingCategoryOrder.push(categoryId)
+  }
+
+  for (const category of shoppingCategories) {
+    if (seen.has(category.id)) continue
+    seen.add(category.id)
+    shoppingCategoryOrder.push(category.id)
+  }
+
+  return { shoppingCategories, shoppingCategoryOrder }
+}
 
 export function normalizeState(state: Partial<AppState>): AppState {
   const seed = cloneSeed()
@@ -22,26 +59,34 @@ export function normalizeState(state: Partial<AppState>): AppState {
       : seedProteinCategories
 
   const categoryIds = new Set(proteinCategories.map((category) => category.id))
+  const { shoppingCategories, shoppingCategoryOrder } = normalizeShoppingCategories(state)
+  const shoppingCategoryIds = new Set(shoppingCategories.map((category) => category.id))
 
   const legacyIngredientProteinById: Record<string, string | null> = {
     chicken: 'chicken',
     'ground-beef': 'beef',
   }
-
   const ingredients = (state.ingredients ?? seed.ingredients).map((ingredient) => {
-    const legacyIngredient = ingredient as Ingredient & { proteinCategoryId?: string | null }
+    const legacyIngredient = ingredient as Ingredient & {
+      proteinCategoryId?: string | null
+      shoppingCategoryId?: string | null
+    }
     const requestedId =
       legacyIngredient.proteinCategoryId ??
       legacyIngredientProteinById[ingredient.id] ??
       null
+    const requestedShoppingCategoryId = legacyIngredient.shoppingCategoryId ?? null
 
     return {
       ...ingredient,
       proteinCategoryId:
         requestedId && categoryIds.has(requestedId) ? requestedId : null,
+      shoppingCategoryId:
+        requestedShoppingCategoryId && shoppingCategoryIds.has(requestedShoppingCategoryId)
+          ? requestedShoppingCategoryId
+          : null,
     }
   })
-
   const legacyProteinToId: Record<string, string> = {
     Chicken: 'chicken',
     Beef: 'beef',
@@ -59,7 +104,6 @@ export function normalizeState(state: Partial<AppState>): AppState {
 
   for (const [day, rows] of Object.entries(state.planner ?? {})) {
     planner[day] = {}
-
     for (const [rowId, value] of Object.entries(rows)) {
       if (Array.isArray(value)) {
         planner[day][rowId] = value.filter((mealId): mealId is string => typeof mealId === 'string').slice(0, 3)
@@ -70,7 +114,6 @@ export function normalizeState(state: Partial<AppState>): AppState {
       }
     }
   }
-
   const meals = (state.meals ?? seed.meals).map((meal) => {
     const legacyMeal = meal as Meal & {
       protein?: string
@@ -82,13 +125,11 @@ export function normalizeState(state: Partial<AppState>): AppState {
       legacyMeal.proteinCategoryOverrideId ??
       legacyMeal.proteinCategoryId ??
       (legacyMeal.protein ? legacyProteinToId[legacyMeal.protein] : undefined)
-
     const derivedProteinIds = new Set(
       meal.ingredients
         .map((item) => ingredientProteinById.get(item.ingredientId))
         .filter((id): id is string => Boolean(id)),
     )
-
     // Older versions wrote "none" directly onto meals. In the ingredient-driven
     // model, that stale value must not suppress a real protein ingredient.
     const migratedOverride =
@@ -103,7 +144,6 @@ export function normalizeState(state: Partial<AppState>): AppState {
       proteinCategoryOverrideId: migratedOverride,
     }
   })
-
   return {
     ingredients,
     meals,
@@ -115,9 +155,10 @@ export function normalizeState(state: Partial<AppState>): AppState {
     shoppingHistory: state.shoppingHistory ?? [],
     plannerNotes: state.plannerNotes ?? {},
     shoppingPurchasesByWeek: state.shoppingPurchasesByWeek ?? {},
+    shoppingCategories,
+    shoppingCategoryOrder,
   }
 }
-
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -133,7 +174,6 @@ function openDatabase(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error)
   })
 }
-
 async function readIndexedDB(): Promise<AppState | null> {
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
@@ -145,7 +185,6 @@ async function readIndexedDB(): Promise<AppState | null> {
     tx.onerror = () => db.close()
   })
 }
-
 async function writeIndexedDB(state: AppState): Promise<void> {
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
@@ -161,7 +200,6 @@ async function writeIndexedDB(state: AppState): Promise<void> {
     }
   })
 }
-
 function readLegacyLocalStorage(): AppState | null {
   try {
     const raw = localStorage.getItem(LEGACY_KEY)
@@ -177,7 +215,6 @@ async function loadLocalState(): Promise<AppState> {
   try {
     const stored = await readIndexedDB()
     if (stored) return normalizeState(stored)
-
     const legacy = readLegacyLocalStorage()
     if (legacy) {
       await writeIndexedDB(legacy)
@@ -185,9 +222,9 @@ async function loadLocalState(): Promise<AppState> {
       return legacy
     }
 
-    return cloneSeed()
+    return normalizeState(cloneSeed())
   } catch {
-    return readLegacyLocalStorage() ?? cloneSeed()
+    return readLegacyLocalStorage() ?? normalizeState(cloneSeed())
   }
 }
 
@@ -198,7 +235,6 @@ async function cacheState(state: AppState): Promise<void> {
     localStorage.setItem(LEGACY_KEY, JSON.stringify(state))
   }
 }
-
 async function readRemoteState(): Promise<AppState | null> {
   if (!supabaseConfigured) return null
 
@@ -216,7 +252,6 @@ async function readRemoteState(): Promise<AppState | null> {
 
 async function writeRemoteState(state: AppState): Promise<void> {
   if (!supabaseConfigured) return
-
   const { error } = await supabase
     .from('meal_planner_state')
     .upsert(
@@ -241,7 +276,6 @@ export async function loadState(): Promise<AppState> {
 
   try {
     const remote = await readRemoteState()
-
     if (remote) {
       await cacheState(remote)
       return remote
@@ -259,7 +293,6 @@ export async function loadState(): Promise<AppState> {
 
 export async function saveState(state: AppState): Promise<void> {
   const normalized = normalizeState(state)
-
   // Always save locally first so the UI remains resilient offline.
   await cacheState(normalized)
 
@@ -276,7 +309,6 @@ export function subscribeToRemoteState(
   onState: (state: AppState) => void,
 ): () => void {
   if (!supabaseConfigured) return () => undefined
-
   const channel = supabase
     .channel(`meal-planner-state-${sharedStateId}`)
     .on(
@@ -290,7 +322,6 @@ export function subscribeToRemoteState(
       (payload) => {
         const row = payload.new as { state?: Partial<AppState> } | undefined
         if (!row?.state) return
-
         const next = normalizeState(row.state)
         void cacheState(next)
         onState(next)
@@ -302,7 +333,6 @@ export function subscribeToRemoteState(
     void supabase.removeChannel(channel)
   }
 }
-
 export async function resetState(): Promise<void> {
   try {
     const db = await openDatabase()

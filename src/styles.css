@@ -915,3 +915,143 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   }
 }
 
+
+/* Shopping categories / store-order organization */
+.shopping-section-header { align-items: flex-start; }
+.shopping-header-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.shopping-organize-button { white-space: nowrap; }
+
+.shopping-category-group { border-bottom: 1px solid var(--line); }
+.shopping-category-group:last-child { border-bottom: 0; }
+.shopping-category-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 16px;
+  background: #f4f1ec;
+  border-bottom: 1px solid var(--line);
+  color: #5f5951;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.shopping-category-label small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.categorized-shopping-list .shopping-category-group .shopping-item:last-child { border-bottom: 0; }
+.categorized-shopping-list .purchased-group-label { margin-top: 0; }
+
+.shopping-category-modal { width: min(700px, 100%); }
+.shopping-category-manager-section + .shopping-category-manager-section {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.shopping-category-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.shopping-category-manager-heading h3 { margin: 0 0 3px; font-size: 14px; }
+.shopping-category-manager-heading p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+.shopping-category-order-list {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  overflow: hidden;
+}
+.shopping-category-order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.shopping-category-order-row:last-child { border-bottom: 0; }
+.shopping-category-order-row > span { min-width: 0; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shopping-category-order-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.shopping-category-order-actions button {
+  min-width: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: #4f4a43;
+  padding: 5px 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.shopping-category-order-actions button:disabled { opacity: .35; cursor: default; }
+.shopping-category-order-actions .shopping-category-delete { color: var(--danger); }
+
+.shopping-category-add { display: flex; gap: 7px; margin-top: 9px; }
+.shopping-category-add input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 9px 10px;
+  outline: none;
+}
+.shopping-category-add input:focus,
+.shopping-category-ingredient-search:focus,
+.shopping-category-ingredient-row select:focus {
+  border-color: #a9b8aa;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.shopping-category-add button { white-space: nowrap; }
+
+.shopping-category-ingredient-search {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  outline: none;
+}
+.shopping-category-ingredient-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+}
+.shopping-category-ingredient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 190px);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+}
+.shopping-category-ingredient-row:last-child { border-bottom: 0; }
+.shopping-category-ingredient-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #37332e; font-size: 11px; font-weight: 650; }
+.shopping-category-ingredient-row select {
+  width: 100%;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  padding: 7px 8px;
+  color: #4f4a43;
+  outline: none;
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .shopping-section-header { align-items: stretch; }
+  .shopping-header-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+  .shopping-organize-button { flex: 1 1 auto; }
+  .shopping-category-modal { padding: 17px; }
+  .shopping-category-order-row { align-items: flex-start; }
+  .shopping-category-order-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .shopping-category-add { flex-direction: column; }
+  .shopping-category-add button { width: 100%; }
+  .shopping-category-ingredient-row { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .shopping-category-ingredient-list { max-height: 42vh; }
+}

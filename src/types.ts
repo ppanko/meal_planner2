@@ -6,11 +6,25 @@ export type ProteinCategory = {
   color: string
 }
 
+export type ShoppingCategory = {
+  id: string
+  name: string
+}
+
+export const defaultShoppingCategories: ShoppingCategory[] = [
+  { id: 'produce', name: 'Produce' },
+  { id: 'meat', name: 'Meat' },
+  { id: 'dairy', name: 'Dairy' },
+  { id: 'frozen', name: 'Frozen' },
+  { id: 'aisle', name: 'Aisle' },
+]
+
 export type Ingredient = {
   id: string
   name: string
   unit: string
   proteinCategoryId: string | null
+  shoppingCategoryId?: string | null
 }
 
 export type MealIngredient = {
@@ -25,7 +39,6 @@ export type Meal = {
   proteinCategoryOverrideId: string | null
   ingredients: MealIngredient[]
 }
-
 export type Planner = Record<string, Record<string, string[]>>
 
 export type PlannerRow = {
@@ -46,6 +59,7 @@ export type ShoppingItem = {
   unit: string
   quantity: number
   checked: boolean
+  shoppingCategoryId?: string | null
 }
 
 export type ShoppingHistoryItem = {
@@ -53,7 +67,6 @@ export type ShoppingHistoryItem = {
   name: string
   lastPurchasedAt: string
 }
-
 export type AppState = {
   ingredients: Ingredient[]
   meals: Meal[]
@@ -65,4 +78,6 @@ export type AppState = {
   shoppingHistory: ShoppingHistoryItem[]
   plannerNotes: Record<string, Record<string, string>>
   shoppingPurchasesByWeek: Record<string, Record<string, number>>
+  shoppingCategories?: ShoppingCategory[]
+  shoppingCategoryOrder?: string[]
 }
