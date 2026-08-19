@@ -523,6 +523,54 @@ function App() {
     }, deletedMeal ? `Deleted ${deletedMeal.name}` : 'Deleted meal')
   }
 
+  function deleteIngredient(ingredientId: string) {
+    if (!state) return
+
+    const ingredient = state.ingredients.find((item) => item.id === ingredientId)
+    if (!ingredient) return
+
+    const isUsed = state.meals.some((meal) =>
+      meal.ingredients.some((item) => item.ingredientId === ingredientId),
+    )
+
+    if (isUsed) return
+
+    const shoppingPurchasesByWeek: AppState['shoppingPurchasesByWeek'] = JSON.parse(
+      JSON.stringify(state.shoppingPurchasesByWeek),
+    )
+
+    for (const purchases of Object.values(shoppingPurchasesByWeek)) {
+      delete purchases[ingredientId]
+    }
+
+    updateWithUndo({
+      ...state,
+      ingredients: state.ingredients.filter((item) => item.id !== ingredientId),
+      shoppingPurchasesByWeek,
+    }, `Deleted ingredient ${ingredient.name}`)
+  }
+
+  function deleteProteinCategory(categoryId: string) {
+    if (!state || categoryId === 'none') return
+
+    const category = state.proteinCategories.find((item) => item.id === categoryId)
+    if (!category) return
+
+    const isUsedByIngredient = state.ingredients.some(
+      (ingredient) => ingredient.proteinCategoryId === categoryId,
+    )
+    const isUsedByMeal = state.meals.some(
+      (meal) => meal.proteinCategoryOverrideId === categoryId,
+    )
+
+    if (isUsedByIngredient || isUsedByMeal) return
+
+    updateWithUndo({
+      ...state,
+      proteinCategories: state.proteinCategories.filter((item) => item.id !== categoryId),
+    }, `Deleted protein category ${category.name}`)
+  }
+
   function toggleShopping(lineId: string) {
     if (!state) return
 
@@ -777,15 +825,18 @@ function App() {
         {showMealForm && (
           <MealForm
             meal={editingMeal}
+            meals={state.meals}
             ingredients={state.ingredients}
             proteinCategories={state.proteinCategories}
             duplicateMode={duplicateMode}
             onCancel={() => { setDuplicateMode(false); setEditingMeal(null); setShowMealForm(false) }}
             onSave={saveMeal}
             onCreateIngredient={(ingredient) => update({ ...state, ingredients: [...state.ingredients, ingredient] })}
+            onDeleteIngredient={deleteIngredient}
             onCreateProteinCategory={(category) =>
               update({ ...state, proteinCategories: [...state.proteinCategories, category] })
             }
+            onDeleteProteinCategory={deleteProteinCategory}
           />
         )}
 
@@ -954,6 +1005,7 @@ function PlannerView({
   const [newRowLabel, setNewRowLabel] = useState('')
   const [showRowEditor, setShowRowEditor] = useState(false)
   const [mobilePickerSlot, setMobilePickerSlot] = useState<{ day: string; rowId: string; label: string } | null>(null)
+  const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
 
   const filteredMeals = useMemo(() => {
     const query = mealSearch.trim().toLowerCase()
@@ -1236,6 +1288,87 @@ function PlannerView({
               </section>
             )
           })}
+        </div>
+
+        <div className={`mobile-custom-row-manager ${showRowEditor ? 'editing' : ''}`}>
+          {!showRowEditor ? (
+            <button
+              type="button"
+              className="mobile-custom-row-trigger"
+              onClick={() => setShowRowEditor(true)}
+            >
+              <span className="add-row-icon">+</span>
+              <span>
+                <strong>Add custom row</strong>
+                <small>For guests, kids, dietary needs, or another meal</small>
+              </span>
+            </button>
+          ) : (
+            <div className="mobile-custom-row-editor">
+              <input
+                value={newRowLabel}
+                onChange={(event) => setNewRowLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    addPlannerRow(newRowLabel)
+                    setNewRowLabel('')
+                    setShowRowEditor(false)
+                  }
+
+                  if (event.key === 'Escape') {
+                    setNewRowLabel('')
+                    setShowRowEditor(false)
+                  }
+                }}
+                placeholder="e.g. Kids, Vegetarian, Extra meal"
+                aria-label="Optional new planner row name"
+                autoFocus
+              />
+
+              <div className="mobile-custom-row-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setNewRowLabel('')
+                    setShowRowEditor(false)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => {
+                    addPlannerRow(newRowLabel)
+                    setNewRowLabel('')
+                    setShowRowEditor(false)
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          {customRows.length > 0 && (
+            <div className="mobile-custom-row-list" aria-label="Custom planner rows">
+              {customRows.map((row) => (
+                <div className="mobile-custom-row-item" key={row.id}>
+                  <span>{row.label}</span>
+                  <button
+                    type="button"
+                    className="mobile-custom-row-remove"
+                    onClick={() => removePlannerRow(row.id)}
+                    aria-label={`Remove ${row.label} row`}
+                    title="Remove row"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1546,8 +1679,8 @@ function MealEditorCard({ meal, ingredients, proteinCategories, onEdit, onDelete
   )
 }
 
-function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false, onCancel, onSave, onCreateIngredient, onCreateProteinCategory }: {
-  meal: Meal | null | undefined; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; duplicateMode?: boolean; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void; onCreateProteinCategory: (category: ProteinCategory) => void
+function MealForm({ meal, meals, ingredients, proteinCategories, duplicateMode = false, onCancel, onSave, onCreateIngredient, onDeleteIngredient, onCreateProteinCategory, onDeleteProteinCategory }: {
+  meal: Meal | null | undefined; meals: Meal[]; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; duplicateMode?: boolean; onCancel: () => void; onSave: (meal: Meal, oldId?: string) => void; onCreateIngredient: (ingredient: Ingredient) => void; onDeleteIngredient: (ingredientId: string) => void; onCreateProteinCategory: (category: ProteinCategory) => void; onDeleteProteinCategory: (categoryId: string) => void
 }) {
   const [name, setName] = useState(meal?.name ?? '')
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
@@ -1557,6 +1690,40 @@ function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false,
   const [rows, setRows] = useState(meal?.ingredients ?? [])
   const [newIngredient, setNewIngredient] = useState('')
   const [newIngredientProteinCategoryId, setNewIngredientProteinCategoryId] = useState('')
+  const [showIngredientManager, setShowIngredientManager] = useState(false)
+  const [showProteinCategoryManager, setShowProteinCategoryManager] = useState(false)
+
+  const unusedIngredients = ingredients.filter((ingredient) => {
+    const usedInSavedMeal = meals.some((savedMeal) =>
+      savedMeal.ingredients.some((item) => item.ingredientId === ingredient.id),
+    )
+    const usedInCurrentForm = rows.some((row) => row.ingredientId === ingredient.id)
+    return !usedInSavedMeal && !usedInCurrentForm
+  })
+
+  const manageableProteinCategories = proteinCategories
+    .filter((category) => category.id !== 'none')
+    .map((category) => ({
+      category,
+      inUse:
+        ingredients.some((ingredient) => ingredient.proteinCategoryId === category.id) ||
+        meals.some((savedMeal) => savedMeal.proteinCategoryOverrideId === category.id),
+    }))
+    .sort((a, b) => a.category.name.localeCompare(b.category.name))
+
+  function removeProteinCategory(categoryId: string) {
+    const target = manageableProteinCategories.find(({ category }) => category.id === categoryId)
+    if (!target || target.inUse) return
+
+    if (proteinCategoryOverrideId === categoryId) {
+      setProteinCategoryOverrideId('')
+    }
+    if (newIngredientProteinCategoryId === categoryId) {
+      setNewIngredientProteinCategoryId('')
+    }
+
+    onDeleteProteinCategory(categoryId)
+  }
 
   function addRow() {
     const first = ingredients[0]
@@ -1650,6 +1817,47 @@ function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false,
           Add category
         </button>
       </div>
+
+      <div className="protein-category-manager">
+        <button
+          type="button"
+          className="ingredient-manager-toggle"
+          onClick={() => setShowProteinCategoryManager((open) => !open)}
+        >
+          <span>{showProteinCategoryManager ? 'Hide protein categories' : 'Manage protein categories'}</span>
+          <small>{manageableProteinCategories.filter(({ inUse }) => !inUse).length}</small>
+        </button>
+
+        {showProteinCategoryManager && (
+          <div className="ingredient-manager-panel">
+            <p>Unused categories can be deleted. Categories assigned to an ingredient or saved meal are marked in use.</p>
+            {manageableProteinCategories.length > 0 ? (
+              <div className="ingredient-manager-list">
+                {manageableProteinCategories.map(({ category, inUse }) => (
+                  <div className="ingredient-manager-row protein-category-manager-row" key={category.id}>
+                    <span><ProteinDot category={category} />{category.name}</span>
+                    {inUse ? (
+                      <small className="category-in-use">In use</small>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => removeProteinCategory(category.id)}
+                        aria-label={`Delete ${category.name} protein category`}
+                        title={`Delete ${category.name}`}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ingredient-manager-empty">No protein categories to manage.</div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="ingredients-editor"><div className="editor-label">Ingredients</div>
         {rows.map((row, index) => <div className="ingredient-row" key={`${row.ingredientId}-${index}`}>
           <select value={row.ingredientId} onChange={(e) => setRows(rows.map((r, i) => i === index ? { ...r, ingredientId: e.target.value } : r))}>{ingredients.map((i) => <option value={i.id} key={i.id}>{i.name}</option>)}</select>
@@ -1662,7 +1870,13 @@ function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false,
               return category ? <><ProteinDot category={category} />{category.name}</> : '—'
             })()}
           </span>
-          <button onClick={() => setRows(rows.filter((_, i) => i !== index))}>×</button>
+          <button
+            type="button"
+            className="ingredient-row-remove"
+            onClick={() => setRows(rows.filter((_, i) => i !== index))}
+            aria-label="Remove ingredient from meal"
+            title="Remove ingredient from meal"
+          >×</button>
         </div>)}
         <button className="secondary" onClick={addRow}>+ Add ingredient</button>
         <div className="new-ingredient">
@@ -1683,7 +1897,46 @@ function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false,
                 <option key={category.id} value={category.id}>{category.name}</option>
               ))}
           </select>
-          <button onClick={addNewIngredient}>Create</button>
+          <button type="button" onClick={addNewIngredient}>Create</button>
+        </div>
+
+        <div className="ingredient-manager">
+          <button
+            type="button"
+            className="ingredient-manager-toggle"
+            onClick={() => setShowIngredientManager((open) => !open)}
+          >
+            <span>{showIngredientManager ? 'Hide unused ingredients' : 'Manage unused ingredients'}</span>
+            <small>{unusedIngredients.length}</small>
+          </button>
+
+          {showIngredientManager && (
+            <div className="ingredient-manager-panel">
+              <p>Only ingredients not used by any saved meal are shown here.</p>
+              {unusedIngredients.length > 0 ? (
+                <div className="ingredient-manager-list">
+                  {unusedIngredients
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((ingredient) => (
+                      <div className="ingredient-manager-row" key={ingredient.id}>
+                        <span>{ingredient.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteIngredient(ingredient.id)}
+                          aria-label={`Delete ${ingredient.name}`}
+                          title={`Delete ${ingredient.name}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="ingredient-manager-empty">No unused ingredients.</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div className="modal-actions"><button className="secondary" onClick={onCancel}>Cancel</button><button className="primary" onClick={save}>Save meal</button></div>

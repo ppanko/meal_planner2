@@ -124,12 +124,29 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .modal input, .modal select { width: 100%; margin-top: 5px; border: 1px solid var(--line); background: white; border-radius: 8px; padding: 10px; outline: none; }
 .editor-label { font-size: 11px; font-weight: 800; color: var(--muted); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .08em; }
 .ingredient-row { display: grid; grid-template-columns: minmax(150px, 1fr) 80px 55px 90px 30px; gap: 6px; align-items: center; margin: 7px 0; }
-.ingredient-row input, .ingredient-row select { margin: 0; }
-.ingredient-row span { color: var(--muted); font-size: 11px; }
+.ingredient-row input, .ingredient-row select { margin: 0; min-width: 0; }
+.ingredient-row span { color: var(--muted); font-size: 11px; min-width: 0; }
 .ingredient-row button { border: 0; background: transparent; color: var(--danger); font-size: 20px; }
+.ingredient-row-remove { justify-self: end; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 6px !important; }
+.ingredient-row-remove:hover { background: #f7e9e7 !important; }
 .new-ingredient { display: grid; grid-template-columns: 1fr 140px auto; gap: 6px; margin-top: 10px; }
-.new-ingredient input { margin: 0; }
+.new-ingredient input { margin: 0; min-width: 0; }
+.new-ingredient select { min-width: 0; }
 .new-ingredient button { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 8px 10px; }
+.protein-category-manager { margin: 4px 0 14px; }
+.protein-category-manager-row > span { display: inline-flex; align-items: center; gap: 6px; }
+.category-in-use { flex: 0 0 auto; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.ingredient-manager { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ingredient-manager-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 8px; background: #faf8f4; color: #4f4a43; padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 700; }
+.ingredient-manager-toggle small { min-width: 22px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; text-align: center; font-size: 10px; }
+.ingredient-manager-panel { margin-top: 8px; }
+.ingredient-manager-panel > p { margin: 0 0 7px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.ingredient-manager-list { max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.ingredient-manager-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 9px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.ingredient-manager-row:last-child { border-bottom: 0; }
+.ingredient-manager-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ingredient-manager-row > button { flex: 0 0 auto; border: 0; background: transparent; color: var(--danger); padding: 4px 5px; font-size: 10px; font-weight: 700; }
+.ingredient-manager-empty { padding: 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; font-size: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 @media (max-width: 900px) {
   .content { padding: 18px 14px 24px; }
@@ -159,8 +176,23 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .planner-slot { min-height: 88px; }
   .slot-placeholder { min-height: 72px; }
   .planned-meal { min-height: 57px; font-size: 11px; }
-  .ingredient-row { grid-template-columns: minmax(130px, 1fr) 65px 45px 80px 25px; }
-  .modal { padding: 17px; }
+  .ingredient-row {
+    grid-template-columns: 76px 45px minmax(0, 1fr) 30px;
+    grid-template-areas:
+      "ingredient ingredient ingredient remove"
+      "quantity unit protein protein";
+    align-items: center;
+  }
+  .ingredient-row > select { grid-area: ingredient; }
+  .ingredient-row > input { grid-area: quantity; }
+  .ingredient-row > span:not(.ingredient-protein-indicator) { grid-area: unit; }
+  .ingredient-row > .ingredient-protein-indicator { grid-area: protein; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ingredient-row > .ingredient-row-remove { grid-area: remove; }
+  .new-ingredient { grid-template-columns: minmax(0, 1fr) auto; }
+  .new-ingredient > input { grid-column: 1 / -1; }
+  .new-ingredient > select { grid-column: 1; }
+  .new-ingredient > button { grid-column: 2; }
+  .modal { padding: 17px; overflow-x: hidden; }
 }
 .loading-screen { min-height: 100vh; display: grid; place-items: center; background: var(--bg); }
 .loading-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; color: var(--muted); }
@@ -711,6 +743,20 @@ h2 { font-size: 27px; margin: 2px 0 0; }
   .desktop-planner-layout, .legacy-mobile-browser-toggle { display: none !important; }
   .mobile-planner { display: block; }
   .mobile-planner-days { display: flex; flex-direction: column; gap: 14px; }
+  .mobile-custom-row-manager { margin-top: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .mobile-custom-row-trigger { width: 100%; border: 1px dashed #c9c3ba; border-radius: 9px; background: transparent; color: #59534c; padding: 9px 11px; display: flex; align-items: center; gap: 10px; text-align: left; }
+  .mobile-custom-row-trigger > span:last-child { display: flex; flex-direction: column; gap: 1px; }
+  .mobile-custom-row-trigger strong { font-size: 12px; }
+  .mobile-custom-row-trigger small { color: var(--muted); font-size: 10px; font-weight: 400; }
+  .mobile-custom-row-editor { display: flex; gap: 7px; align-items: center; }
+  .mobile-custom-row-editor input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: white; padding: 9px 10px; outline: none; }
+  .mobile-custom-row-editor input:focus { border-color: #a9b8aa; box-shadow: 0 0 0 2px var(--accent-soft); }
+  .mobile-custom-row-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+  .mobile-custom-row-actions button { padding: 8px 10px; font-size: 10px; }
+  .mobile-custom-row-list { margin-top: 9px; border-top: 1px solid var(--line); }
+  .mobile-custom-row-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 2px 0; color: #615b53; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .mobile-custom-row-remove { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 5px; }
+  .mobile-custom-row-remove:hover { color: var(--danger); }
   .mobile-day-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
   .mobile-day-header {
     display: flex;
