@@ -100,9 +100,10 @@ Choose checks relevant to the change, including both desktop and a narrow mobile
 
 ## Supabase and deployment
 
-- Treat `docs/SECURITY_RELIABILITY_TRACKER.md` as a release gate. Do not merge
-  or deploy the versioned-sync work until required items SEC-001 through SEC-004
-  are marked complete with verification evidence.
+- Treat `docs/SECURITY_RELIABILITY_TRACKER.md` as a staged release gate. Merge
+  the expansion release only after SEC-001 through SEC-003 and the local
+  SEC-004 implementation checks are complete. Promote and deploy the contract
+  only after the expansion frontend has been confirmed in production.
 - Treat `SUPABASE_SETUP.md` and `supabase/setup.sql` as the source of truth for the current household-code flow. Do not reintroduce the older email allow-list flow unless explicitly requested.
 - Authorization must be enforced by database RLS/RPCs, never only by browser code. The publishable key may be public; the household code must not be embedded in the bundle.
 - Preserve existing shared state and enrolled devices when editing `supabase/setup.sql`; setup should remain safe to rerun.
