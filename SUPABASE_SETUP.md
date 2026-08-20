@@ -95,10 +95,31 @@ configure:
 - `SUPABASE_DB_PASSWORD`
 - `SUPABASE_PROJECT_ID`
 
-`ALLOWED_EMAILS` can be deleted. The access token is a Supabase personal access
-token, the database password belongs to this project, and the project ID is the
-reference shown in the project dashboard URL. These three migration values are
-used only by GitHub Actions and are never included in the browser bundle.
+`ALLOWED_EMAILS` can be deleted. Obtain the three migration-only values as
+follows:
+
+- `SUPABASE_ACCESS_TOKEN`: generate a personal access token from **Supabase
+  Dashboard -> Account -> Access Tokens**. This is not the project's publishable
+  key or service-role key. Give the token a recognizable CI-only name, copy it
+  directly into the GitHub secret, and do not save it in `.secrets`.
+- `SUPABASE_DB_PASSWORD`: use the Postgres password chosen when the project was
+  created. Supabase does not display the existing password; if it is no longer
+  available in your password manager, reset it under **Project -> Database ->
+  Settings** and save the replacement securely.
+- `SUPABASE_PROJECT_ID`: copy the project reference used in the dashboard URL or
+  displayed by the project's connection/settings panel. This is sometimes
+  called the project ref. Store it as a GitHub secret here even though it is not
+  equivalent to a password.
+
+The browser values come from **Project -> Settings -> API**: copy the project URL
+to `SUPABASE_URL`, copy the publishable key to
+`SUPABASE_PUBLISHABLE_KEY`, and normally set `SUPABASE_STATE_ID` to the literal
+value `household`.
+
+These migration values are used only by the isolated migration steps in GitHub
+Actions and are never included in the browser bundle. SEC-004 in
+`docs/SECURITY_RELIABILITY_TRACKER.md` remains a production-release blocker, so
+do not merge or deploy this branch merely because the secrets are configured.
 
 On a push to `master`, GitHub Actions tests and builds first, previews pending
 migrations, applies them with `supabase db push`, and only then publishes the

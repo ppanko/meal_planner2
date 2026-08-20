@@ -7,7 +7,12 @@ const migration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260819000000_versioned_sync.sql'),
   'utf8',
 )
+const hardeningMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260819010000_harden_state_boundary.sql'),
+  'utf8',
+)
 const deployWorkflow = readFileSync(resolve(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
+const pullRequestWorkflow = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8')
 
 describe('Supabase sync migration', () => {
   it('requires version-checked RPC writes instead of direct client updates', () => {
@@ -35,19 +40,76 @@ describe('Supabase sync migration', () => {
     expect(migration).not.toContain('grant select, insert, update')
   })
 
-  it('applies tracked migrations only after the app passes its release gates', () => {
-    const testIndex = deployWorkflow.indexOf('run: npm test')
-    const buildIndex = deployWorkflow.indexOf('run: npm run build')
-    const dryRunIndex = deployWorkflow.indexOf('run: supabase db push --dry-run')
-    const pushIndex = deployWorkflow.indexOf('run: supabase db push\n')
-    const deployIndex = deployWorkflow.indexOf('uses: actions/deploy-pages@v4')
+  it('constrains reads and writes to one bounded, valid household state', () => {
+    for (const source of [sql, hardeningMigration]) {
+      expect(source).toContain("requested_id is distinct from 'household'")
+      expect(source).toContain('octet_length(value::text) <= 750000')
+      expect(source).toContain("('__proto__', 'prototype', 'constructor')")
+      expect(source).toContain('nesting_depth > 32')
+      expect(source).toContain('expected_revision is null or expected_revision < 0')
+      expect(source).toContain('mutation_id is null')
+      expect(source).toContain('not public.meal_planner_state_is_valid(requested_state)')
+      expect(source).toContain("id = 'household'")
+      expect(source).toContain('drop policy if exists "household can create meal planner"')
+      expect(source).toContain('drop policy if exists "household can update meal planner"')
+    }
+  })
 
-    expect(testIndex).toBeGreaterThan(-1)
-    expect(buildIndex).toBeGreaterThan(testIndex)
-    expect(dryRunIndex).toBeGreaterThan(buildIndex)
-    expect(pushIndex).toBeGreaterThan(dryRunIndex)
-    expect(deployIndex).toBeGreaterThan(pushIndex)
-    expect(deployWorkflow).toContain('uses: supabase/setup-cli@v1')
-    expect(deployWorkflow).toContain('SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}')
+  it('requires all persisted top-level collection types at the server boundary', () => {
+    const requiredTypes = {
+      ingredients: 'array',
+      meals: 'array',
+      planner: 'object',
+      shoppingChecked: 'object',
+      manualShoppingItems: 'object',
+      proteinCategories: 'array',
+      plannerRowsByWeek: 'object',
+      shoppingHistory: 'array',
+      plannerNotes: 'object',
+      shoppingPurchasesByWeek: 'object',
+      shoppingDismissedByWeek: 'object',
+      shoppingCategories: 'array',
+      shoppingCategoryOrder: 'array',
+    }
+
+    for (const [field, type] of Object.entries(requiredTypes)) {
+      expect(hardeningMigration).toContain(
+        `jsonb_typeof(value -> '${field}') is not distinct from '${type}'`,
+      )
+    }
+  })
+
+  it('isolates migration credentials and orders release jobs behind verification', () => {
+    const verifyIndex = deployWorkflow.indexOf('  verify:')
+    const migrateIndex = deployWorkflow.indexOf('  migrate:')
+    const deployIndex = deployWorkflow.indexOf('  deploy:')
+    const verifyJob = deployWorkflow.slice(verifyIndex, migrateIndex)
+    const migrateJob = deployWorkflow.slice(migrateIndex, deployIndex)
+    const deployJob = deployWorkflow.slice(deployIndex)
+
+    expect(deployWorkflow).toContain('permissions: {}')
+    expect(verifyJob).toContain('run: npm test')
+    expect(verifyJob).toContain('run: npm run build')
+    expect(verifyJob).not.toContain('SUPABASE_ACCESS_TOKEN')
+    expect(verifyJob).not.toContain('SUPABASE_DB_PASSWORD')
+    expect(migrateJob).toContain('needs: verify')
+    expect(migrateJob).toContain('run: supabase db push --dry-run')
+    expect(migrateJob).toContain('run: supabase db push')
+    expect(migrateJob).toContain('SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}')
+    expect(deployJob).toContain('needs: migrate')
+    expect(deployJob).not.toContain('SUPABASE_ACCESS_TOKEN')
+    expect(deployJob).not.toContain('SUPABASE_DB_PASSWORD')
+    expect(deployJob).toContain('pages: write')
+    expect(deployJob).toContain('id-token: write')
+  })
+
+  it('pins every third-party action and the Supabase CLI version', () => {
+    const uses = [...`${deployWorkflow}\n${pullRequestWorkflow}`.matchAll(/^\s*uses:\s+([^\s#]+)/gm)]
+      .map((match) => match[1])
+
+    expect(uses.length).toBeGreaterThan(0)
+    expect(uses.every((action) => /@[a-f0-9]{40}$/.test(action))).toBe(true)
+    expect(deployWorkflow).toContain('version: 2.100.0')
+    expect(deployWorkflow).not.toContain('version: latest')
   })
 })

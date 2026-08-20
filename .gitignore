@@ -11,3 +11,6 @@ coverage/
 .secrets
 .env.local
 supabase/.temp/
+
+# Local-only Git bundles retained before privacy-sensitive history rewrites.
+.local-history-backups/
