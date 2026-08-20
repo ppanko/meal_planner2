@@ -107,6 +107,7 @@ Choose checks relevant to the change, including both desktop and a narrow mobile
 - Authorization must be enforced by database RLS/RPCs, never only by browser code. The publishable key may be public; the household code must not be embedded in the bundle.
 - Preserve existing shared state and enrolled devices when editing `supabase/setup.sql`; setup should remain safe to rerun.
 - Add schema changes as new timestamped files in `supabase/migrations/`; never edit a migration after deployment. Keep `supabase/setup.sql` current as the fresh-project bootstrap.
+- The versioned-sync upgrade is a two-release exception documented in `docs/VERSIONED_SYNC_ROLLOUT.md`. Keep its prepared contract SQL under `supabase/contracts/` until the expansion frontend has been deployed and confirmed; promote it to `supabase/migrations/` only as a separate contract release.
 - The Pages release applies pending migrations only after tests and a successful build, then deploys the matching frontend. Feature branches must not mutate the production database.
 - Never print or commit real email addresses, access tokens, database passwords,
   household access codes, Supabase project references, or authenticated user IDs

@@ -88,6 +88,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        # Contract SQL remains under supabase/contracts until a later release.
+        # The CLI applies only the expansion-compatible migrations here.
         run: supabase db push
 
   deploy:

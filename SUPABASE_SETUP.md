@@ -18,11 +18,8 @@ It preserves the existing `meal_planner_state` table/data.
 
 The setup also installs version-checked writes and a rolling history of the 50
 most recent confirmed states. Existing state begins at revision `0`; the next
-successful application save advances it normally.
-
-> Deploy the matching application build immediately after running this SQL.
-> The migration disables legacy direct browser writes so older builds cannot
-> bypass conflict protection.
+successful application save advances it normally. A fresh setup starts directly
+in the contracted RPC-only phase because it has no legacy frontend to support.
 
 `setup.sql` is the one-time bootstrap path for a new project. After bootstrap,
 schema changes live in `supabase/migrations/`; the GitHub Pages release applies
@@ -30,7 +27,8 @@ pending migrations before publishing the matching frontend.
 
 If this app is already connected to a working Supabase project, do not rerun
 `setup.sql` for the versioned-sync upgrade. Configure the migration secrets in
-step 4; the next `master` release applies the tracked upgrade automatically.
+step 4 and follow the two-release expand/deploy/contract procedure in
+[`docs/VERSIONED_SYNC_ROLLOUT.md`](docs/VERSIONED_SYNC_ROLLOUT.md).
 
 ### Save the generated household code
 
@@ -123,7 +121,9 @@ do not merge or deploy this branch merely because the secrets are configured.
 
 On a push to `master`, GitHub Actions tests and builds first, previews pending
 migrations, applies them with `supabase db push`, and only then publishes the
-prepared Pages artifact. A feature-branch push never changes the database.
+prepared Pages artifact. A feature-branch push never changes the database. The
+contract SQL stays outside `supabase/migrations/` until a later, confirmed
+release, so the first migration run cannot disable the currently deployed app.
 
 This uses the Supabase CLI with the existing Free-plan project and a standard
 GitHub-hosted runner in this public repository. It does not require Supabase

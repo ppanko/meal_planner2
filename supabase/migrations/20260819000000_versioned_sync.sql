@@ -8,6 +8,23 @@ begin
   end if;
 end $$;
 
+-- This marker distinguishes an existing legacy database, which needs a
+-- compatibility window, from a fresh setup that is already contracted. A
+-- later release promotes the contract SQL into supabase/migrations/.
+create table if not exists public.meal_planner_release_state (
+  id text primary key,
+  phase text not null check (phase in ('expand', 'contract')),
+  updated_at timestamptz not null default now(),
+  constraint meal_planner_release_state_id check (id = 'versioned_sync')
+);
+
+alter table public.meal_planner_release_state enable row level security;
+revoke all on table public.meal_planner_release_state from anon, authenticated;
+
+insert into public.meal_planner_release_state (id, phase)
+values ('versioned_sync', 'expand')
+on conflict (id) do nothing;
+
 alter table public.meal_planner_state
   add column if not exists revision bigint not null default 0;
 alter table public.meal_planner_state
@@ -28,10 +45,9 @@ create table if not exists public.meal_planner_state_versions (
 alter table public.meal_planner_state_versions enable row level security;
 revoke all on table public.meal_planner_state_versions from anon, authenticated;
 
--- Browser clients can read the current state, but all writes must pass through
--- the revision-checked RPC below.
-revoke all on table public.meal_planner_state from anon, authenticated;
-grant select on table public.meal_planner_state to authenticated;
+-- Do not revoke the legacy table grants in this expansion migration. The
+-- immediately preceding frontend still writes with a direct upsert; the next
+-- migration installs a guarded compatibility trigger for those writes.
 
 create or replace function public.save_meal_planner_state(
   requested_id text,
@@ -57,6 +73,8 @@ begin
   if not public.is_meal_planner_authorized() then
     raise exception 'Not authorized';
   end if;
+
+  perform set_config('meal_planner.versioned_rpc_write', 'on', true);
 
   select * into current_row
   from public.meal_planner_state as planner_state
@@ -129,7 +147,7 @@ begin
     current_row.updated_by,
     current_row.last_mutation_id
   )
-  on conflict (state_id, revision) do nothing;
+  on conflict on constraint meal_planner_state_versions_pkey do nothing;
 
   update public.meal_planner_state as planner_state
   set

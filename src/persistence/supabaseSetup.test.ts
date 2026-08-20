@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -11,6 +11,12 @@ const hardeningMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260819010000_harden_state_boundary.sql'),
   'utf8',
 )
+const contractMigrationName = '20260819020000_contract_versioned_sync.sql'
+const contractMigration = readFileSync(resolve(
+  process.cwd(),
+  'supabase/contracts',
+  contractMigrationName,
+), 'utf8')
 const deployWorkflow = readFileSync(resolve(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
 const pullRequestWorkflow = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8')
 
@@ -37,7 +43,25 @@ describe('Supabase sync migration', () => {
     expect(migration).toContain('create or replace function public.save_meal_planner_state')
     expect(migration).toContain('if current_row.revision <> expected_revision then')
     expect(migration).toContain('limit 50')
-    expect(migration).not.toContain('grant select, insert, update')
+    expect(migration).toContain("values ('versioned_sync', 'expand')")
+  })
+
+  it('keeps legacy writes guarded during expansion and contracts them later', () => {
+    expect(hardeningMigration).toContain('guard_legacy_meal_planner_write')
+    expect(hardeningMigration).toContain('grant insert, update on table public.meal_planner_state')
+    expect(hardeningMigration).toContain("where id = 'versioned_sync' and phase = 'expand'")
+    expect(hardeningMigration).toContain("set_config('meal_planner.versioned_rpc_write', 'on', true)")
+    expect(contractMigration).toContain('revoke all on table public.meal_planner_state')
+    expect(contractMigration).toContain('drop function if exists public.guard_legacy_meal_planner_write()')
+    expect(contractMigration).toContain("set phase = 'contract'")
+    expect(readdirSync(resolve(process.cwd(), 'supabase/migrations')))
+      .not.toContain(contractMigrationName)
+  })
+
+  it('does not reopen legacy writes when migrations follow a fresh setup', () => {
+    expect(sql).toContain("when to_regclass('public.meal_planner_state') is null then 'contract'")
+    expect(sql).not.toContain('grant select, insert, update on table public.meal_planner_state')
+    expect(sql).toContain("where id = 'versioned_sync' and phase = 'expand'")
   })
 
   it('constrains reads and writes to one bounded, valid household state', () => {

@@ -1,6 +1,7 @@
--- Constrain the versioned sync boundary to one bounded, structurally valid
--- household state. This migration intentionally does not change rollout order;
--- the backward-compatible release work remains tracked separately as SEC-004.
+-- Constrain the versioned sync boundary while keeping the immediately previous
+-- direct-upsert client operational. Legacy writes are validated, versioned,
+-- and archived by a temporary compatibility trigger. A later release applies
+-- the contract SQL only after the RPC client is confirmed in production.
 
 create or replace function public.meal_planner_json_keys_are_safe(
   value jsonb,
@@ -93,9 +94,76 @@ alter table public.meal_planner_state
   add constraint meal_planner_valid_state_payload
   check (public.meal_planner_state_is_valid(state)) not valid;
 
+create or replace function public.guard_legacy_meal_planner_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if current_setting('meal_planner.versioned_rpc_write', true) = 'on' then
+    return new;
+  end if;
+
+  if not public.is_meal_planner_authorized() then
+    raise exception 'Not authorized';
+  end if;
+
+  if new.id is distinct from 'household' then
+    raise exception 'Invalid shared state ID' using errcode = '22023';
+  end if;
+
+  if new.state is null or not public.meal_planner_state_is_valid(new.state) then
+    raise exception 'Invalid shared state payload' using errcode = '22023';
+  end if;
+
+  if tg_op = 'INSERT' then
+    new.revision := 1;
+  else
+    if new.id is distinct from old.id then
+      raise exception 'Shared state ID cannot be changed' using errcode = '22023';
+    end if;
+
+    insert into public.meal_planner_state_versions (
+      state_id, revision, state, archived_at, archived_by, mutation_id
+    ) values (
+      old.id,
+      old.revision,
+      old.state,
+      now(),
+      old.updated_by,
+      old.last_mutation_id
+    )
+    on conflict on constraint meal_planner_state_versions_pkey do nothing;
+
+    new.revision := old.revision + 1;
+
+    delete from public.meal_planner_state_versions as version
+    where version.state_id = old.id
+      and version.revision not in (
+        select retained.revision
+        from public.meal_planner_state_versions as retained
+        where retained.state_id = old.id
+        order by retained.revision desc
+        limit 50
+      );
+  end if;
+
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+  new.last_mutation_id := null;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_legacy_meal_planner_write() from public;
+
 drop policy if exists "household can read meal planner" on public.meal_planner_state;
 drop policy if exists "household can create meal planner" on public.meal_planner_state;
 drop policy if exists "household can update meal planner" on public.meal_planner_state;
+
+revoke all on table public.meal_planner_state from anon, authenticated;
+grant select on table public.meal_planner_state to authenticated;
 
 create policy "household can read meal planner"
 on public.meal_planner_state
@@ -105,6 +173,52 @@ using (
   id = 'household'
   and (select public.is_meal_planner_authorized())
 );
+
+drop trigger if exists guard_legacy_meal_planner_write
+on public.meal_planner_state;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.meal_planner_release_state
+    where id = 'versioned_sync' and phase = 'expand'
+  ) then
+    grant insert, update on table public.meal_planner_state to authenticated;
+    grant execute on function public.meal_planner_state_is_valid(jsonb) to authenticated;
+    grant execute on function public.meal_planner_json_keys_are_safe(jsonb, integer) to authenticated;
+
+    execute $policy$
+      create policy "household can create meal planner"
+      on public.meal_planner_state
+      for insert
+      to authenticated
+      with check (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+    $policy$;
+
+    execute $policy$
+      create policy "household can update meal planner"
+      on public.meal_planner_state
+      for update
+      to authenticated
+      using (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+      with check (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+    $policy$;
+
+    create trigger guard_legacy_meal_planner_write
+    before insert or update on public.meal_planner_state
+    for each row execute function public.guard_legacy_meal_planner_write();
+  end if;
+end $$;
 
 create or replace function public.save_meal_planner_state(
   requested_id text,
@@ -130,6 +244,8 @@ begin
   if not public.is_meal_planner_authorized() then
     raise exception 'Not authorized';
   end if;
+
+  perform set_config('meal_planner.versioned_rpc_write', 'on', true);
 
   if requested_id is distinct from 'household' then
     raise exception 'Invalid shared state ID' using errcode = '22023';
@@ -218,7 +334,7 @@ begin
     current_row.updated_by,
     current_row.last_mutation_id
   )
-  on conflict (state_id, revision) do nothing;
+  on conflict on constraint meal_planner_state_versions_pkey do nothing;
 
   update public.meal_planner_state as planner_state
   set

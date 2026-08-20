@@ -6,8 +6,10 @@ exposed. The audit found no household access code, database password, Supabase
 secret/service key, access token, private key, or database connection string in
 tracked files, Git history, or the production bundle.
 
-Do not merge `feature/sync-data-protection` into `master` or run its production
-migration until every required item below is complete and verified.
+Do not ship the versioned-sync database and frontend as one breaking release.
+The expansion release may proceed only after SEC-001 through SEC-003 and the
+local SEC-004 implementation checks are complete. The contract release remains
+blocked until the expansion frontend has been confirmed in production.
 
 When closing an item, change its status to `Complete` and record the verifying
 commit, test, or external setting. Never paste a real email address, token,
@@ -17,7 +19,7 @@ password, household code, project reference, or user ID into this file.
 
 ### SEC-001 — Protect commit-author privacy
 
-**Status:** In progress — repository work complete; GitHub account setting confirmation required
+**Status:** Complete — protected locally and on both public branches
 
 The public Git history contains a personal, non-`noreply` author email address.
 
@@ -30,10 +32,17 @@ Completion record:
   the recovery source and must never be pushed.
 - [x] Rewrite local branch history and verify that branch commits use only the
   protected address before the coordinated force-push.
-- [ ] Enable GitHub's protection against command-line pushes that expose a private
+- [x] Enable GitHub's protection against command-line pushes that expose a private
   email address.
-- [ ] Confirm **Keep my email addresses private** remains enabled in GitHub
+- [x] Confirm **Keep my email addresses private** remains enabled in GitHub
   account email settings.
+- [x] Replace `master` and `feature/sync-data-protection` with exact
+  force-with-lease checks and verify both resulting remote tips.
+
+Verification: both local branches contain only the protected address in author
+and committer metadata. Both public branch tips were replaced and verified on
+August 19, 2026. Historical clones or provider caches may retain old objects;
+the repository no longer advertises them through either branch.
 
 ### SEC-002 — Isolate deployment credentials and pin actions
 
@@ -87,7 +96,7 @@ regression tests. No production database was contacted.
 
 ### SEC-004 — Make database and frontend releases backward-compatible
 
-**Status:** Open
+**Status:** Implementation complete locally — production rollout not started
 
 The current release migrates the database before the new frontend is published.
 A failed Pages deployment, or an already-open old browser tab, can therefore be
@@ -95,14 +104,26 @@ left incompatible with the migrated database.
 
 Completion criteria:
 
-- Use an expand/deploy/contract rollout: introduce backward-compatible database
+- [x] Use an expand/deploy/contract rollout: introduce backward-compatible database
   capabilities, deploy the new client, and remove legacy write access only in a
   later confirmed release.
-- Ensure a failure at any release step leaves the currently deployed client able
+- [x] Ensure a failure at any release step leaves the currently deployed client able
   to read and save safely.
-- Exercise migrations against a disposable local Supabase/Postgres instance in
+- [x] Exercise migrations against a disposable local Supabase/Postgres instance in
   CI or through an equivalent repeatable migration test.
-- Document the rollout and recovery procedure without including credentials.
+- [x] Document the rollout and recovery procedure without including credentials.
+- [ ] Deploy and verify the expansion release while the contract SQL remains
+  outside `supabase/migrations/`.
+- [ ] After a stable usage cycle, promote and deploy the contract as its own
+  release, then verify RPC saves and the absence of legacy write policies.
+
+Local verification: the expansion marker, guarded legacy writes, partial-
+migration failure behavior, history retention, RPC writes, fresh-setup behavior,
+and final contract are executed in PostgreSQL-compatible PGlite by
+`src/persistence/supabaseSql.integration.test.ts`. The intentionally unpromoted
+contract is `supabase/contracts/20260819020000_contract_versioned_sync.sql`.
+Operational steps and recovery paths are documented in
+`docs/VERSIONED_SYNC_ROLLOUT.md`. No production database was contacted.
 
 ## Optional architectural improvements
 
