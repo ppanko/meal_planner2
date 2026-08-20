@@ -19,6 +19,7 @@ Meal Planner is a mobile-first React 19 + TypeScript PWA built with Vite. It man
 - `src/styles.css`: global styles and responsive breakpoints.
 - `public/`: web manifest, icons, and network-first service worker.
 - `supabase/setup.sql`: database schema, enrollment RPCs, RLS policies, and realtime setup.
+- `supabase/migrations/`: immutable, incremental production database changes.
 - `.github/workflows/deploy.yml`: GitHub Pages build and deployment from `master`.
 
 ## Setup and commands
@@ -56,8 +57,10 @@ There is no lint script. For code changes, run the relevant focused tests while 
   - every controller or utility that reads, copies, deletes, or derives that field.
 - `normalizeState()` must continue accepting older and partially populated state. Do not assume newly added properties exist in IndexedDB or Supabase.
 - Keep updates immutable and route persisted changes through `update()` or `updateWithUndo()`. Use `updateWithUndo()` for user-visible destructive actions that should be reversible.
-- Supabase stores the entire state object in a single `meal_planner_state` row. Writes are last-write-wins; avoid extra saves and do not introduce mutations that can race with the realtime subscription.
-- Local persistence is intentionally written before remote persistence so the app remains usable during network failures. Preserve the IndexedDB/localStorage fallback behavior.
+- Supabase stores the entire state object in a versioned `meal_planner_state` row. All browser writes must use the compare-and-swap RPC; never reintroduce direct upserts or bypass revision checks.
+- Local sync persistence keeps the working state, last confirmed server state, revision, and replayable pending changes. Preserve that queue across reloads and network failures, and never replace it with an unversioned state-only save.
+- Realtime snapshots must be rebased beneath pending local changes. Ignore older revisions and do not let an echo or remote update silently discard the local queue.
+- Undo must reverse only the affected local delta through the merge layer; restoring an old whole-state snapshot directly can erase newer changes from another device.
 - Planner day keys use local `YYYY-MM-DD` strings from `dateKey()`. Weeks start on Monday, and week-scoped records use the Monday key.
 - Planner cells contain arrays of meal IDs and are limited to three meals. Preserve this invariant in UI actions, drag-and-drop code, copies, and migrations.
 - The shopping list is derived from planned meal ingredients. Purchased quantities, manual items, notes, custom rows, and history have separate week/global storage; do not conflate generated and manual items.
@@ -97,9 +100,19 @@ Choose checks relevant to the change, including both desktop and a narrow mobile
 
 ## Supabase and deployment
 
-- Treat `SUPABASE_SETUP.md` and `supabase/setup.sql` as the source of truth for the current household-code flow. `.env.example` contains remnants of the older email allow-list configuration; do not reintroduce that flow unless explicitly requested.
+- Treat `docs/SECURITY_RELIABILITY_TRACKER.md` as a staged release gate. Merge
+  the expansion release only after SEC-001 through SEC-003 and the local
+  SEC-004 implementation checks are complete. Promote and deploy the contract
+  only after the expansion frontend has been confirmed in production.
+- Treat `SUPABASE_SETUP.md` and `supabase/setup.sql` as the source of truth for the current household-code flow. Do not reintroduce the older email allow-list flow unless explicitly requested.
 - Authorization must be enforced by database RLS/RPCs, never only by browser code. The publishable key may be public; the household code must not be embedded in the bundle.
 - Preserve existing shared state and enrolled devices when editing `supabase/setup.sql`; setup should remain safe to rerun.
+- Add schema changes as new timestamped files in `supabase/migrations/`; never edit a migration after deployment. Keep `supabase/setup.sql` current as the fresh-project bootstrap.
+- The versioned-sync upgrade is a two-release exception documented in `docs/VERSIONED_SYNC_ROLLOUT.md`. Keep its prepared contract SQL under `supabase/contracts/` until the expansion frontend has been deployed and confirmed; promote it to `supabase/migrations/` only as a separate contract release.
+- The Pages release applies pending migrations only after tests and a successful build, then deploys the matching frontend. Feature branches must not mutate the production database.
+- Never print or commit real email addresses, access tokens, database passwords,
+  household access codes, Supabase project references, or authenticated user IDs
+  while completing the security release checklist.
 - If changing required Vite variables, update `vite.config.ts`, `src/vite-env.d.ts`, `.secrets.example`, the deployment workflow, and setup documentation together.
 - Vite uses `base: './'` for GitHub Pages project URLs. Do not change it without validating asset, manifest, and service-worker paths.
 

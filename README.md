@@ -33,7 +33,7 @@
 
 Meal Planner is built for the details of a real week: custom planner rows, reusable ingredients, one-off shopping items, store-order categories, purchase history, and the occasional need to buy milk twice.
 
-Your household shares one live plan across devices. The local cache keeps the app responsive and available when the connection is not.
+Your household shares one live plan across devices. Versioned synchronization prevents stale devices from silently overwriting newer changes, while a durable local queue keeps offline edits safe until they can sync.
 
 ## Run it locally
 
@@ -63,9 +63,9 @@ Add your Supabase URL and publishable key to `.secrets`. Database setup and hous
 
 ## Under the hood
 
-React, TypeScript, Vite, Supabase, and `dnd-kit`. The test suite uses Vitest, Testing Library, jsdom, and an in-memory IndexedDB implementation.
+React, TypeScript, Vite, Supabase, and `dnd-kit`. The test suite uses Vitest, Testing Library, jsdom, an in-memory IndexedDB implementation, and PGlite for executable PostgreSQL migration checks.
 
-Planner data is cached in IndexedDB and synchronized through Supabase Realtime. Household access is protected by anonymous authentication, enrollment, and Row Level Security; the private household code is never bundled with the app.
+Planner data is cached in IndexedDB and synchronized through version-checked Supabase writes and Realtime updates. Conflicting edits are merged when safe, unresolved overlaps stay on the device for review, and recent server revisions are retained for recovery. Household access is protected by anonymous authentication, enrollment, and Row Level Security; the private household code is never bundled with the app.
 
 ## Deploy
 
@@ -75,6 +75,15 @@ The included GitHub Actions workflow tests, builds, and deploys `master` to GitH
 SUPABASE_URL
 SUPABASE_PUBLISHABLE_KEY
 SUPABASE_STATE_ID
+SUPABASE_ACCESS_TOKEN
+SUPABASE_DB_PASSWORD
+SUPABASE_PROJECT_ID
 ```
+
+The final three values are migration-only credentials isolated from application
+build and deployment steps. Review the remaining release gates in
+[the security and reliability tracker](docs/SECURITY_RELIABILITY_TRACKER.md),
+then follow the secret-safe setup instructions in
+[SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
 The PWA uses a relative base path, so it works from a GitHub Pages project URL without additional routing configuration.

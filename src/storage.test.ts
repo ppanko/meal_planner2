@@ -8,6 +8,7 @@ vi.mock('./supabase', () => ({
 
 import { seedProteinCategories, seedState } from './data'
 import { loadState, normalizeState, resetState, saveState } from './storage'
+import { defaultShoppingCategories } from './types'
 import type { AppState } from './types'
 
 beforeEach(async () => {
@@ -207,6 +208,50 @@ describe('normalizeState', () => {
     const second = normalizeState({})
     first.ingredients[0].name = 'Changed'
     expect(second.ingredients[0].name).not.toBe('Changed')
+  })
+
+  it('recovers safely from malformed persisted collection types', () => {
+    const result = normalizeState({
+      ingredients: 'not-an-array',
+      meals: { unexpected: true },
+      planner: { '2026-08-17': null },
+      manualShoppingItems: { '2026-08-17': 'not-an-array' },
+      proteinCategories: 'not-an-array',
+      shoppingHistory: { unexpected: true },
+      shoppingCategories: 'not-an-array',
+      shoppingCategoryOrder: { unexpected: true },
+    })
+
+    expect(result.ingredients.map(({ id }) => id)).toEqual(seedState.ingredients.map(({ id }) => id))
+    expect(result.meals.map(({ id }) => id)).toEqual(seedState.meals.map(({ id }) => id))
+    expect(result.planner['2026-08-17']).toEqual({})
+    expect(result.manualShoppingItems['2026-08-17']).toEqual([])
+    expect(result.proteinCategories).toEqual(seedProteinCategories)
+    expect(result.shoppingHistory).toEqual([])
+    expect(result.shoppingCategories).toEqual(defaultShoppingCategories)
+  })
+
+  it('drops prototype-sensitive keys without modifying global prototypes', () => {
+    const payload = JSON.parse(`{
+      "shoppingChecked": {
+        "safe": true,
+        "__proto__": { "polluted": true },
+        "constructor": { "polluted": true }
+      },
+      "planner": {
+        "prototype": { "Dinner": ["bad"] },
+        "2026-08-17": { "Dinner": ["safe"] }
+      }
+    }`) as unknown
+
+    const result = normalizeState(payload)
+
+    expect(result.shoppingChecked).toEqual({ safe: true })
+    expect(Object.hasOwn(result.shoppingChecked, '__proto__')).toBe(false)
+    expect(Object.hasOwn(result.shoppingChecked, 'constructor')).toBe(false)
+    expect(Object.hasOwn(result.planner, 'prototype')).toBe(false)
+    expect(result.planner['2026-08-17'].Dinner).toEqual(['safe'])
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined()
   })
 })
 

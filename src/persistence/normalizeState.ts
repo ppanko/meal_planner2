@@ -4,6 +4,29 @@ import { ensureCatalogIngredient, findIngredientByName } from '../shopping/ingre
 import { defaultShoppingCategories } from '../types'
 import type { AppState, Ingredient, Meal, ShoppingCategory } from '../types'
 
+const unsafeObjectKeys = new Set(['__proto__', 'prototype', 'constructor'])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function sanitizePersistedValue(value: unknown, depth = 0): unknown {
+  if (depth > 32) return null
+  if (Array.isArray(value)) return value.map((item) => sanitizePersistedValue(item, depth + 1))
+  if (!isRecord(value)) return value
+
+  const sanitized: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (unsafeObjectKeys.has(key)) continue
+    sanitized[key] = sanitizePersistedValue(nestedValue, depth + 1)
+  }
+  return sanitized
+}
+
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
 function cloneSeed(): AppState {
   return structuredClone(seedState)
 }
@@ -13,9 +36,9 @@ function normalizeShoppingCategories(state: Partial<AppState>): {
   shoppingCategoryOrder: string[]
 } {
   const defaultIds = new Set(defaultShoppingCategories.map((category) => category.id))
-  const requested = (state.shoppingCategories ?? [])
+  const requested = (Array.isArray(state.shoppingCategories) ? state.shoppingCategories : [])
     .filter((category): category is ShoppingCategory =>
-      Boolean(category && typeof category.id === 'string' && category.id.trim() && typeof category.name === 'string' && category.name.trim()),
+      Boolean(isRecord(category) && typeof category.id === 'string' && category.id.trim() && typeof category.name === 'string' && category.name.trim()),
     )
     .map((category) => ({ id: category.id.trim(), name: category.name.trim() }))
   const requestedById = new Map(requested.map((category) => [category.id, category]))
@@ -27,7 +50,8 @@ function normalizeShoppingCategories(state: Partial<AppState>): {
   const seen = new Set<string>()
   const shoppingCategoryOrder: string[] = []
 
-  for (const categoryId of state.shoppingCategoryOrder ?? []) {
+  for (const categoryId of Array.isArray(state.shoppingCategoryOrder) ? state.shoppingCategoryOrder : []) {
+    if (typeof categoryId !== 'string') continue
     if (!validIds.has(categoryId) || seen.has(categoryId)) continue
     seen.add(categoryId)
     shoppingCategoryOrder.push(categoryId)
@@ -40,14 +64,26 @@ function normalizeShoppingCategories(state: Partial<AppState>): {
   return { shoppingCategories, shoppingCategoryOrder }
 }
 
-export function normalizeState(state: Partial<AppState>): AppState {
+export function normalizeState(input: Partial<AppState> | unknown): AppState {
+  const sanitized = sanitizePersistedValue(input)
+  const state = (isRecord(sanitized) ? sanitized : {}) as Partial<AppState>
   const seed = cloneSeed()
-  const proteinCategories = state.proteinCategories?.length ? state.proteinCategories : seedProteinCategories
+  const requestedProteinCategories = (Array.isArray(state.proteinCategories) ? state.proteinCategories : [])
+    .filter((category) => isRecord(category)
+      && typeof category.id === 'string'
+      && typeof category.name === 'string'
+      && typeof category.color === 'string') as AppState['proteinCategories']
+  const proteinCategories = requestedProteinCategories.length ? requestedProteinCategories : seedProteinCategories
   const categoryIds = new Set(proteinCategories.map((category) => category.id))
   const { shoppingCategories, shoppingCategoryOrder } = normalizeShoppingCategories(state)
   const shoppingCategoryIds = new Set(shoppingCategories.map((category) => category.id))
   const legacyIngredientProteinById: Record<string, string | null> = { chicken: 'chicken', 'ground-beef': 'beef' }
-  let ingredients: Ingredient[] = (state.ingredients ?? seed.ingredients).map((ingredient) => {
+  const requestedIngredients = (Array.isArray(state.ingredients) ? state.ingredients : seed.ingredients)
+    .filter((ingredient) => isRecord(ingredient)
+      && typeof ingredient.id === 'string'
+      && typeof ingredient.name === 'string'
+      && typeof ingredient.unit === 'string') as Ingredient[]
+  let ingredients: Ingredient[] = requestedIngredients.map((ingredient) => {
     const legacyIngredient = ingredient as Ingredient & { proteinCategoryId?: string | null; shoppingCategoryId?: string | null }
     const requestedId = legacyIngredient.proteinCategoryId ?? legacyIngredientProteinById[ingredient.id] ?? null
     const requestedShoppingCategoryId = legacyIngredient.shoppingCategoryId ?? null
@@ -58,17 +94,28 @@ export function normalizeState(state: Partial<AppState>): AppState {
     }
   })
   const rawManualShoppingItems = Object.fromEntries(
-    Object.entries(state.manualShoppingItems ?? {}).map(([weekKey, items]) => [weekKey, items.map((item) => ({
-      ...item,
-      quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : undefined,
-      unit: typeof item.unit === 'string' && item.unit.trim() ? item.unit.trim() : undefined,
-      shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
-    }))]),
+    Object.entries(recordOrEmpty(state.manualShoppingItems)).map(([weekKey, items]) => [weekKey,
+      (Array.isArray(items) ? items : [])
+        .filter((item) => isRecord(item)
+          && typeof item.id === 'string'
+          && typeof item.name === 'string'
+          && typeof item.checked === 'boolean')
+        .map((item) => ({
+          ...item,
+          quantity: typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : undefined,
+          unit: typeof item.unit === 'string' && item.unit.trim() ? item.unit.trim() : undefined,
+          shoppingCategoryId: typeof item.shoppingCategoryId === 'string' && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
+        }))]),
   )
-  const rawShoppingHistory = (state.shoppingHistory ?? []).map((item) => ({
-    ...item,
-    shoppingCategoryId: item.shoppingCategoryId && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
-  }))
+  const rawShoppingHistory = (Array.isArray(state.shoppingHistory) ? state.shoppingHistory : [])
+    .filter((item) => isRecord(item)
+      && typeof item.id === 'string'
+      && typeof item.name === 'string'
+      && typeof item.lastPurchasedAt === 'string')
+    .map((item) => ({
+      ...item,
+      shoppingCategoryId: typeof item.shoppingCategoryId === 'string' && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
+    }))
 
   function linkCatalogItem(name: string, ingredientId: string | null | undefined, categoryId: string | null | undefined) {
     let ingredient = ingredientId
@@ -100,9 +147,9 @@ export function normalizeState(state: Partial<AppState>): AppState {
   const ingredientProteinById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient.proteinCategoryId]))
   const planner: AppState['planner'] = {}
 
-  for (const [day, rows] of Object.entries(state.planner ?? {})) {
+  for (const [day, rows] of Object.entries(recordOrEmpty(state.planner))) {
     planner[day] = {}
-    for (const [rowId, value] of Object.entries(rows)) {
+    for (const [rowId, value] of Object.entries(recordOrEmpty(rows))) {
       if (Array.isArray(value)) {
         planner[day][rowId] = value.filter((mealId): mealId is string => typeof mealId === 'string').slice(0, 3)
       } else if (typeof value === 'string' && value) {
@@ -113,15 +160,26 @@ export function normalizeState(state: Partial<AppState>): AppState {
     }
   }
 
-  const meals = (state.meals ?? seed.meals).map((meal) => {
+  const requestedMeals = (Array.isArray(state.meals) ? state.meals : seed.meals)
+    .filter((meal) => isRecord(meal)
+      && typeof meal.id === 'string'
+      && typeof meal.name === 'string'
+      && typeof meal.type === 'string') as Meal[]
+  const meals = requestedMeals.map((meal) => {
     const legacyMeal = meal as Meal & { protein?: string; proteinCategoryId?: string; proteinCategoryOverrideId?: string | null }
     const explicitOverride = legacyMeal.proteinCategoryOverrideId ?? legacyMeal.proteinCategoryId ?? (legacyMeal.protein ? legacyProteinToId[legacyMeal.protein] : undefined)
-    const derivedProteinIds = new Set(meal.ingredients.map((item) => ingredientProteinById.get(item.ingredientId)).filter((id): id is string => Boolean(id)))
+    const mealIngredients = (Array.isArray(meal.ingredients) ? meal.ingredients : [])
+      .filter((item) => isRecord(item)
+        && typeof item.ingredientId === 'string'
+        && typeof item.quantity === 'number'
+        && Number.isFinite(item.quantity)) as Meal['ingredients']
+    const derivedProteinIds = new Set(mealIngredients.map((item) => ingredientProteinById.get(item.ingredientId)).filter((id): id is string => Boolean(id)))
     const migratedOverride = explicitOverride === 'none' && derivedProteinIds.size > 0
       ? null
       : explicitOverride && categoryIds.has(explicitOverride) ? explicitOverride : null
     return {
       ...meal,
+      ingredients: mealIngredients,
       proteinCategoryOverrideId: migratedOverride,
       recipeUrl: normalizeRecipeUrl(typeof meal.recipeUrl === 'string' ? meal.recipeUrl : '') ?? '',
       notes: typeof meal.notes === 'string' ? meal.notes.trim() : '',
@@ -153,14 +211,14 @@ export function normalizeState(state: Partial<AppState>): AppState {
     ingredients,
     meals,
     planner,
-    shoppingChecked: state.shoppingChecked ?? {},
+    shoppingChecked: recordOrEmpty(state.shoppingChecked) as AppState['shoppingChecked'],
     manualShoppingItems,
     proteinCategories,
-    plannerRowsByWeek: state.plannerRowsByWeek ?? {},
+    plannerRowsByWeek: recordOrEmpty(state.plannerRowsByWeek) as AppState['plannerRowsByWeek'],
     shoppingHistory,
-    plannerNotes: state.plannerNotes ?? {},
-    shoppingPurchasesByWeek: state.shoppingPurchasesByWeek ?? {},
-    shoppingDismissedByWeek: state.shoppingDismissedByWeek ?? {},
+    plannerNotes: recordOrEmpty(state.plannerNotes) as AppState['plannerNotes'],
+    shoppingPurchasesByWeek: recordOrEmpty(state.shoppingPurchasesByWeek) as AppState['shoppingPurchasesByWeek'],
+    shoppingDismissedByWeek: recordOrEmpty(state.shoppingDismissedByWeek) as AppState['shoppingDismissedByWeek'],
     shoppingCategories,
     shoppingCategoryOrder,
   }

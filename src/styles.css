@@ -18,6 +18,14 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 .app-shell { min-height: 100vh; padding-bottom: 76px; }
 .topbar { height: 76px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(255,253,249,.9); }
+.topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.sync-status { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); padding: 4px 0; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.sync-status > span { width: 7px; height: 7px; border-radius: 50%; background: #73927a; }
+.sync-status.saving > span { background: #c49a54; animation: sync-pulse 1.1s ease-in-out infinite; }
+.sync-status.offline > span { background: #9a938a; }
+.sync-status.conflict { color: var(--danger); cursor: pointer; }
+.sync-status.conflict > span { background: var(--danger); }
+@keyframes sync-pulse { 50% { opacity: .35; } }
 .eyebrow { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .15em; }
 h1, h2, h3, h4, p { margin-top: 0; }
 h1 { font-size: 23px; margin: 2px 0 0; }
@@ -139,9 +147,18 @@ h2 { font-size: 27px; margin: 2px 0 0; }
 .ingredient-row-remove:hover { background: #f7e9e7 !important; }
 .ingredient-manager-empty { padding: 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; font-size: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.sync-conflict-backdrop { z-index: 1200; }
+.sync-conflict-modal { width: min(500px, 100%); }
+.sync-conflict-modal h2 { margin: 4px 0 10px; }
+.sync-conflict-modal p, .sync-conflict-modal li { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sync-conflict-modal ul { margin: 12px 0 0; padding-left: 20px; }
+.sync-conflict-actions { flex-wrap: wrap; }
 @media (max-width: 900px) {
   .content { padding: 18px 14px 24px; }
   .topbar { padding: 0 16px; height: 66px; }
+  .topbar-actions { gap: 7px; }
+  .sync-status { font-size: 0; }
+  .sync-status.conflict { font-size: 9px; }
   .planner-layout { display: block; }
   .mobile-meal-browser-toggle { display: flex; }
   .meal-library { display: none; max-height: 52vh; min-height: 0; margin-bottom: 14px; }
