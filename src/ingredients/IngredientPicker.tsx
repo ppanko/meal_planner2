@@ -4,6 +4,11 @@ import type { Ingredient } from '../types'
 import { sortBySearch } from '../utils/search'
 import './IngredientPicker.css'
 
+export type IngredientPickerSecondaryAction = {
+  label: (name: string) => string
+  onSelect: (name: string) => void
+}
+
 type IngredientPickerProps = {
   label: string
   ingredients: Ingredient[]
@@ -11,9 +16,20 @@ type IngredientPickerProps = {
   autoFocus?: boolean
   onChange: (ingredientId: string) => void
   onCreate?: (name: string) => void
+  createLabel?: (name: string) => string
+  secondaryAction?: IngredientPickerSecondaryAction
 }
 
-export function IngredientPicker({ label, ingredients, value, autoFocus = false, onChange, onCreate }: IngredientPickerProps) {
+export function IngredientPicker({
+  label,
+  ingredients,
+  value,
+  autoFocus = false,
+  onChange,
+  onCreate,
+  createLabel = (name) => `Create “${name}”…`,
+  secondaryAction,
+}: IngredientPickerProps) {
   const listboxId = useId()
   const selectedIngredient = ingredients.find((ingredient) => ingredient.id === value)
   const [inputValue, setInputValue] = useState(selectedIngredient?.name ?? '')
@@ -29,12 +45,15 @@ export function IngredientPicker({ label, ingredients, value, autoFocus = false,
     () => sortBySearch(ingredients, filterText, (ingredient) => ingredient.name),
     [filterText, ingredients],
   )
-  const createName = filterText.trim()
-  const hasExactMatch = createName.length > 0 && ingredients.some(
-    (ingredient) => ingredient.name.trim().toLocaleLowerCase() === createName.toLocaleLowerCase(),
+  const actionName = filterText.trim()
+  const hasExactMatch = actionName.length > 0 && ingredients.some(
+    (ingredient) => ingredient.name.trim().toLocaleLowerCase() === actionName.toLocaleLowerCase(),
   )
-  const showCreate = Boolean(onCreate) && createName.length > 0 && !hasExactMatch
-  const optionCount = options.length + (showCreate ? 1 : 0)
+  const showSecondaryAction = Boolean(secondaryAction) && actionName.length > 0 && !hasExactMatch
+  const showCreate = Boolean(onCreate) && actionName.length > 0 && !hasExactMatch
+  const secondaryIndex = options.length
+  const createIndex = options.length + (showSecondaryAction ? 1 : 0)
+  const optionCount = options.length + Number(showSecondaryAction) + Number(showCreate)
 
   useEffect(() => {
     setActiveIndex(0)
@@ -47,10 +66,26 @@ export function IngredientPicker({ label, ingredients, value, autoFocus = false,
     setOpen(false)
   }
 
+  function runSecondaryAction() {
+    if (!showSecondaryAction || !secondaryAction) return
+    secondaryAction.onSelect(actionName)
+    setInputValue('')
+    setFilterText('')
+    setOpen(false)
+  }
+
   function create() {
     if (!showCreate || !onCreate) return
-    onCreate(createName)
+    onCreate(actionName)
     setOpen(false)
+  }
+
+  function activeDescendant() {
+    if (!open) return undefined
+    if (activeIndex < options.length && options[activeIndex]) return `${listboxId}-${options[activeIndex].id}`
+    if (showSecondaryAction && activeIndex === secondaryIndex) return `${listboxId}-secondary`
+    if (showCreate && activeIndex === createIndex) return `${listboxId}-create`
+    return undefined
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -80,7 +115,10 @@ export function IngredientPicker({ label, ingredients, value, autoFocus = false,
       if (activeIndex < options.length && options[activeIndex]) {
         event.preventDefault()
         choose(options[activeIndex])
-      } else if (showCreate && activeIndex === options.length) {
+      } else if (showSecondaryAction && activeIndex === secondaryIndex) {
+        event.preventDefault()
+        runSecondaryAction()
+      } else if (showCreate && activeIndex === createIndex) {
         event.preventDefault()
         create()
       }
@@ -94,13 +132,7 @@ export function IngredientPicker({ label, ingredients, value, autoFocus = false,
         aria-autocomplete="list"
         aria-controls={listboxId}
         aria-expanded={open}
-        aria-activedescendant={
-          open && activeIndex < options.length && options[activeIndex]
-            ? `${listboxId}-${options[activeIndex].id}`
-            : open && showCreate && activeIndex === options.length
-              ? `${listboxId}-create`
-              : undefined
-        }
+        aria-activedescendant={activeDescendant()}
         role="combobox"
         autoComplete="off"
         autoFocus={autoFocus}
@@ -140,23 +172,45 @@ export function IngredientPicker({ label, ingredients, value, autoFocus = false,
               <small>{ingredient.unit}</small>
             </button>
           ))}
-          {showCreate && (
-            <button
-              id={`${listboxId}-create`}
-              type="button"
-              role="option"
-              aria-label={`Create “${createName}”…`}
-              aria-selected={activeIndex === options.length}
-              className={`ingredient-combobox-create ${activeIndex === options.length ? 'active' : ''}`}
-              tabIndex={-1}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={create}
-              onMouseEnter={() => setActiveIndex(options.length)}
-            >
-              <span>+ Create “{createName}”…</span>
-            </button>
+          {(showSecondaryAction || showCreate) && (
+            <div className="ingredient-combobox-actions">
+              {showSecondaryAction && secondaryAction && (
+                <button
+                  id={`${listboxId}-secondary`}
+                  type="button"
+                  role="option"
+                  aria-label={secondaryAction.label(actionName)}
+                  aria-selected={activeIndex === secondaryIndex}
+                  className={`ingredient-combobox-secondary ${activeIndex === secondaryIndex ? 'active' : ''}`}
+                  tabIndex={-1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={runSecondaryAction}
+                  onMouseEnter={() => setActiveIndex(secondaryIndex)}
+                >
+                  <span>{secondaryAction.label(actionName)}</span>
+                </button>
+              )}
+              {showCreate && (
+                <button
+                  id={`${listboxId}-create`}
+                  type="button"
+                  role="option"
+                  aria-label={createLabel(actionName)}
+                  aria-selected={activeIndex === createIndex}
+                  className={`ingredient-combobox-create ${activeIndex === createIndex ? 'active' : ''}`}
+                  tabIndex={-1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={create}
+                  onMouseEnter={() => setActiveIndex(createIndex)}
+                >
+                  <span>+ {createLabel(actionName)}</span>
+                </button>
+              )}
+            </div>
           )}
-          {options.length === 0 && !showCreate && <div className="ingredient-combobox-empty">No ingredients match.</div>}
+          {options.length === 0 && !showSecondaryAction && !showCreate && (
+            <div className="ingredient-combobox-empty">No ingredients match.</div>
+          )}
         </div>
       )}
     </div>
