@@ -55,7 +55,6 @@ export function ShoppingHistory({ history, categories, totalCount, search, onSea
             <div className="history-group" key={group.id}>
               <div className="shopping-category-label" role="heading" aria-level={4}>
                 <span>{group.name}</span>
-                <small>{group.items.length}</small>
               </div>
               {group.items.map(renderItem)}
             </div>
