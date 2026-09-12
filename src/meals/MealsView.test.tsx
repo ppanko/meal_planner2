@@ -1,9 +1,26 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { seedProteinCategories } from '../data'
 import { createAppState } from '../test/fixtures'
 import { MealsView } from './MealsView'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function useMobileViewport() {
+  vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(max-width: 900px)',
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })))
+}
 
 describe('MealsView', () => {
   it('groups meals, formats ingredients, and exposes library actions', async () => {
@@ -149,5 +166,48 @@ describe('MealsView', () => {
     expect(screen.queryByRole('heading', { name: 'Breakfast' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Lunch' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Dinner' })).not.toBeInTheDocument()
+  })
+
+  it('uses Breakfast, Lunch, and Dinner tabs in the mobile Meals view', async () => {
+    useMobileViewport()
+    const state = createAppState()
+    const baseMeal = state.meals[0]
+    const breakfast = { ...baseMeal, id: 'breakfast', name: 'Apple Pancakes', type: 'Breakfast' as const }
+    const lunch = { ...baseMeal, id: 'lunch', name: 'Chicken Salad', type: 'Lunch' as const }
+    const dinner = { ...baseMeal, id: 'dinner', name: 'Beef Tacos', type: 'Dinner' as const }
+    const user = userEvent.setup()
+
+    render(
+      <MealsView
+        meals={[dinner, lunch, breakfast]}
+        ingredients={state.ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={vi.fn()}
+        onManageLibrary={vi.fn()}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    const breakfastTab = screen.getByRole('tab', { name: 'Breakfast' })
+    const lunchTab = screen.getByRole('tab', { name: 'Lunch' })
+    const dinnerTab = screen.getByRole('tab', { name: 'Dinner' })
+
+    expect(breakfastTab).toHaveAttribute('aria-selected', 'true')
+    expect(lunchTab).toHaveAttribute('aria-selected', 'false')
+    expect(dinnerTab).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByText('Apple Pancakes')).toBeInTheDocument()
+    expect(screen.queryByText('Chicken Salad')).not.toBeInTheDocument()
+    expect(screen.queryByText('Beef Tacos')).not.toBeInTheDocument()
+
+    await user.click(lunchTab)
+
+    expect(breakfastTab).toHaveAttribute('aria-selected', 'false')
+    expect(lunchTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByText('Apple Pancakes')).not.toBeInTheDocument()
+    expect(screen.getByText('Chicken Salad')).toBeInTheDocument()
+    expect(screen.queryByText('Beef Tacos')).not.toBeInTheDocument()
   })
 })
