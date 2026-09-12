@@ -24,9 +24,11 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
   const [notes, setNotes] = useState(meal?.notes ?? '')
   const [instructions, setInstructions] = useState([...(meal?.instructions ?? [])])
   const [error, setError] = useState('')
+  const sortedIngredients = [...ingredients].sort((a, b) => a.name.localeCompare(b.name))
+  const sortedProteinCategories = [...proteinCategories].sort((a, b) => a.name.localeCompare(b.name))
 
   function addRow() {
-    const first = ingredients[0]
+    const first = sortedIngredients[0]
     if (first) setRows([...rows, { ingredientId: first.id, quantity: 1 }])
   }
 
@@ -72,8 +74,8 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
             <label>Name<input value={name} onChange={(event) => { setName(event.target.value); setError('') }} placeholder="e.g. Chicken tacos" autoFocus /></label>
             <label>Type<select value={type} onChange={(event) => setType(event.target.value as MealType)}>{mealTypes.map((mealType) => <option key={mealType}>{mealType}</option>)}</select></label>
           </div>
-          <label>Protein<select value={proteinCategoryOverrideId} onChange={(event) => setProteinCategoryOverrideId(event.target.value)}><option value="">Auto from ingredients</option>{proteinCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          <div className="protein-guide">{proteinCategories.map((category) => <span key={category.id}><ProteinDot category={category} />{category.name}</span>)}</div>
+          <label>Protein<select value={proteinCategoryOverrideId} onChange={(event) => setProteinCategoryOverrideId(event.target.value)}><option value="">Auto from ingredients</option>{sortedProteinCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <div className="protein-guide">{sortedProteinCategories.map((category) => <span key={category.id}><ProteinDot category={category} />{category.name}</span>)}</div>
         </section>
 
         <section className="meal-form-section">
@@ -86,7 +88,7 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
               const ingredient = ingredients.find((item) => item.id === row.ingredientId)
               const category = proteinCategories.find((item) => item.id === ingredient?.proteinCategoryId)
               return <div className="ingredient-row" key={`${row.ingredientId}-${index}`}>
-                <select aria-label={`Ingredient ${index + 1}`} value={row.ingredientId} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, ingredientId: event.target.value } : item))}>{ingredients.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
+                <select aria-label={`Ingredient ${index + 1}`} value={row.ingredientId} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, ingredientId: event.target.value } : item))}>{sortedIngredients.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
                 <input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.25" value={row.quantity} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Number(event.target.value) } : item))} />
                 <span>{ingredient?.unit ?? ''}</span>
                 <span className="ingredient-protein-indicator">{category ? <><ProteinDot category={category} />{category.name}</> : '—'}</span>
