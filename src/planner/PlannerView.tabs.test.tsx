@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./PlannerSlots', () => ({
   DraggableMeal: ({ meal }: { meal: { name: string } }) => <div>Library {meal.name}</div>,
@@ -57,6 +57,8 @@ function renderPlanner(state = createAppState(), dates = weekDates, weekOffset =
 }
 
 describe('mobile meal tabs', () => {
+  afterEach(() => vi.useRealTimers())
+
   it('shows Breakfast by default and switches the standard row with accessible tabs', () => {
     renderPlanner()
 
@@ -76,6 +78,21 @@ describe('mobile meal tabs', () => {
     expect(lunch).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('button', { name: 'Add Lunch' })).toHaveLength(7)
     expect(screen.queryByRole('button', { name: 'Add Breakfast' })).not.toBeInTheDocument()
+  })
+
+  it('keeps collapsed days collapsed when switching meal tabs', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 20, 12))
+
+    renderPlanner()
+
+    expect(screen.getByRole('button', { name: 'Expand Monday' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getAllByRole('button', { name: 'Add Breakfast' })).toHaveLength(4)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Lunch' }))
+
+    expect(screen.getByRole('button', { name: 'Expand Monday' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getAllByRole('button', { name: 'Add Lunch' })).toHaveLength(4)
   })
 
   it('keeps custom rows visible while tabs switch standard rows', () => {
