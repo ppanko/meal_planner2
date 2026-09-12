@@ -14,8 +14,8 @@
   z-index: 40;
   top: calc(100% + 4px);
   left: 0;
-  right: 0;
-  max-height: 220px;
+  width: max(100%, min(360px, calc(100vw - 32px)));
+  max-height: 260px;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -25,6 +25,7 @@
 
 .ingredient-combobox-options button {
   width: 100%;
+  min-height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,12 +35,12 @@
   border-radius: 0;
   background: white;
   color: #37332e;
-  padding: 9px 10px;
+  padding: 10px 12px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
 }
 
-.ingredient-combobox-options button:last-of-type {
+.ingredient-combobox-options button:last-child {
   border-bottom: 0;
 }
 
@@ -48,26 +49,42 @@
   color: #2f4936;
 }
 
-.ingredient-combobox-options button span {
+.ingredient-combobox-options button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: inherit;
   font-size: inherit;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ingredient-combobox-options button small {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
-.ingredient-combobox-create span {
+.ingredient-combobox-actions {
+  border-top: 1px solid var(--line);
+}
+
+.ingredient-combobox-actions button {
   font-weight: 700;
 }
 
+.ingredient-combobox-secondary {
+  color: #4f4a43 !important;
+}
+
+.ingredient-combobox-create {
+  color: var(--accent) !important;
+}
+
 .ingredient-combobox-empty {
-  padding: 10px;
+  padding: 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -77,6 +94,8 @@
   }
 
   .ingredient-combobox-options {
-    max-height: 180px;
+    width: 100%;
+    max-width: calc(100vw - 28px);
+    max-height: 220px;
   }
 }
