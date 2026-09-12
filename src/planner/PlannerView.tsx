@@ -7,18 +7,21 @@ import type { MobilePickerSlot } from './MobileMealPicker'
 import { PlannerRowEditor } from './PlannerRowEditor'
 import { dayShort, defaultPlannerRows, filterMeals, getPlannerRows, getSlotMealIds } from './plannerUtils'
 import { MobilePlannerSlot, PlannerSlot } from './PlannerSlots'
+import './PlannerView.mobile.css'
 
 const dayLong = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-function getDefaultMobileCollapsedDays(weekDates: Date[], weekOffset: number) {
+function getPastMobileDays(weekDates: Date[], weekOffset: number) {
   const today = dateKey(new Date())
   const isCurrentWeek = weekOffset === 0 && weekDates.some((date) => dateKey(date) === today)
 
-  return new Set(
-    isCurrentWeek
-      ? weekDates.map((date) => dateKey(date)).filter((day) => day < today)
-      : [],
-  )
+  return isCurrentWeek
+    ? weekDates.map((date) => dateKey(date)).filter((day) => day < today)
+    : []
+}
+
+function getDefaultMobileCollapsedDays(weekDates: Date[], weekOffset: number) {
+  return new Set(getPastMobileDays(weekDates, weekOffset))
 }
 
 export function PlannerView({
@@ -58,6 +61,8 @@ export function PlannerView({
   const [mobileCollapsedDays, setMobileCollapsedDays] = useState<Set<string>>(
     () => getDefaultMobileCollapsedDays(weekDates, weekOffset),
   )
+  const [showPastMobileDays, setShowPastMobileDays] = useState(false)
+  const pastMobileDays = getPastMobileDays(weekDates, weekOffset)
   const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
 
   const filteredMeals = useMemo(
@@ -67,6 +72,7 @@ export function PlannerView({
 
   useEffect(() => {
     setMobileCollapsedDays(getDefaultMobileCollapsedDays(weekDates, weekOffset))
+    setShowPastMobileDays(false)
   }, [visibleWeekKey, weekOffset])
 
   function savePlannerRow() {
@@ -196,10 +202,26 @@ export function PlannerView({
 
       <div className="mobile-planner">
         <div className="mobile-planner-days">
+          {pastMobileDays.length > 0 && (
+            <button
+              type="button"
+              className="mobile-past-days-toggle"
+              onClick={() => setShowPastMobileDays((show) => !show)}
+              aria-label={`${showPastMobileDays ? 'Hide' : 'Show'} ${pastMobileDays.length} past days`}
+              aria-expanded={showPastMobileDays}
+            >
+              <span aria-hidden="true">{showPastMobileDays ? '⌃' : '⌄'}</span>
+              <strong>Past days · {pastMobileDays.length}</strong>
+            </button>
+          )}
+
           {weekDates.map((date, dayIndex) => {
             const dayKeyValue = dateKey(date)
             const isCollapsed = mobileCollapsedDays.has(dayKeyValue)
+            const isPastDay = pastMobileDays.includes(dayKeyValue)
             const dayName = dayLong[dayIndex]
+
+            if (isPastDay && isCollapsed && !showPastMobileDays) return null
 
             return (
               <section className="mobile-day-card" key={dayKeyValue}>
