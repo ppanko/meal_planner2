@@ -162,18 +162,16 @@ describe('useShoppingController manual items and history', () => {
     let next = update.mock.calls[0][0] as AppState
     expect(next.manualShoppingItems['2026-08-17']).toEqual([
       state.manualShoppingItems['2026-08-17'][0],
-      expect.objectContaining({ name: 'Apples', checked: false, shoppingCategoryId: null, ingredientId: 'apples' }),
+      expect.objectContaining({ name: 'Apples', checked: false, shoppingCategoryId: null, ingredientId: null }),
     ])
-    expect(next.ingredients).toContainEqual({
-      id: 'apples', name: 'Apples', unit: 'each', proteinCategoryId: null, shoppingCategoryId: null,
-    })
+    expect(next.ingredients).toEqual(state.ingredients)
 
     act(() => result.current.addHistoryItemToShopping('  Bread ', 'aisle'))
     next = update.mock.calls[1][0] as AppState
     expect(next.manualShoppingItems['2026-08-17'][1]).toMatchObject({
-      name: 'Bread', shoppingCategoryId: 'aisle', ingredientId: 'bread',
+      name: 'Bread', shoppingCategoryId: 'aisle', ingredientId: null,
     })
-    expect(next.ingredients).toContainEqual(expect.objectContaining({ id: 'bread', shoppingCategoryId: 'aisle' }))
+    expect(next.ingredients).toEqual(state.ingredients)
 
     update.mockClear()
     act(() => result.current.addHistoryItemToShopping(' milk '))

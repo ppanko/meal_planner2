@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { AppView } from './appTypes'
+import { IngredientEditor } from './ingredients/IngredientEditor'
 import { PlannerView } from './planner/PlannerView'
 import { MealCard } from './planner/PlannerSlots'
 import { usePlannerController } from './planner/usePlannerController'
@@ -101,6 +102,7 @@ function App() {
               meals={state.meals}
               ingredients={state.ingredients}
               onNew={meals.openNewMeal}
+              onNewIngredient={meals.openIngredientEditor}
               onManageLibrary={meals.openLibraryManager}
               onStartCooking={meals.startCooking}
               onEdit={meals.openEditMeal}
@@ -153,9 +155,11 @@ function App() {
             meal={meals.editingMeal}
             ingredients={state.ingredients}
             proteinCategories={state.proteinCategories}
+            shoppingCategories={shopping.orderedShoppingCategories}
             duplicateMode={meals.duplicateMode}
             onCancel={meals.closeMealForm}
             onSave={meals.saveMeal}
+            onCreateIngredient={meals.createIngredient}
           />
         )}
 
@@ -164,11 +168,25 @@ function App() {
             meals={state.meals}
             ingredients={state.ingredients}
             proteinCategories={state.proteinCategories}
+            shoppingCategories={shopping.orderedShoppingCategories}
             onClose={meals.closeLibraryManager}
             onCreateIngredient={meals.createIngredient}
             onDeleteIngredient={meals.deleteIngredient}
             onCreateProteinCategory={meals.createProteinCategory}
             onDeleteProteinCategory={meals.deleteProteinCategory}
+          />
+        )}
+
+        {meals.showIngredientEditor && (
+          <IngredientEditor
+            ingredients={state.ingredients}
+            proteinCategories={state.proteinCategories}
+            shoppingCategories={shopping.orderedShoppingCategories}
+            onCancel={meals.closeIngredientEditor}
+            onSave={(ingredient) => {
+              meals.createIngredient(ingredient)
+              meals.closeIngredientEditor()
+            }}
           />
         )}
 

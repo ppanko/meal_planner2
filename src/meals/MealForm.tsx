@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { mealTypes } from '../data'
-import type { Ingredient, Meal, MealType, ProteinCategory } from '../types'
-import { IngredientCombobox } from './IngredientCombobox'
-import './IngredientCombobox.css'
+import { IngredientEditor } from '../ingredients/IngredientEditor'
+import { IngredientPicker } from '../ingredients/IngredientPicker'
+import type { Ingredient, Meal, MealType, ProteinCategory, ShoppingCategory } from '../types'
 import { ProteinDot } from './mealProtein'
 import { normalizeRecipeUrl } from './recipeDetails'
 import { useEscapeKey } from './useEscapeKey'
@@ -11,23 +11,36 @@ type MealFormProps = {
   meal: Meal | null | undefined
   ingredients: Ingredient[]
   proteinCategories: ProteinCategory[]
+  shoppingCategories?: ShoppingCategory[]
   duplicateMode?: boolean
   onCancel: () => void
   onSave: (meal: Meal, oldId?: string) => void
+  onCreateIngredient?: (ingredient: Ingredient) => void
 }
 
-export function MealForm({ meal, ingredients, proteinCategories, duplicateMode = false, onCancel, onSave }: MealFormProps) {
-  useEscapeKey(onCancel)
+export function MealForm({
+  meal,
+  ingredients,
+  proteinCategories,
+  shoppingCategories = [],
+  duplicateMode = false,
+  onCancel,
+  onSave,
+  onCreateIngredient,
+}: MealFormProps) {
   const [name, setName] = useState(meal?.name ?? '')
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
   const [proteinCategoryOverrideId, setProteinCategoryOverrideId] = useState(meal?.proteinCategoryOverrideId ?? '')
   const [rows, setRows] = useState(meal?.ingredients.map((item) => ({ ...item })) ?? [])
   const [focusRowIndex, setFocusRowIndex] = useState<number | null>(null)
+  const [creatingIngredient, setCreatingIngredient] = useState<{ rowIndex: number; name: string } | null>(null)
   const [recipeUrl, setRecipeUrl] = useState(meal?.recipeUrl ?? '')
   const [notes, setNotes] = useState(meal?.notes ?? '')
   const [instructions, setInstructions] = useState([...(meal?.instructions ?? [])])
   const [error, setError] = useState('')
   const sortedProteinCategories = [...proteinCategories].sort((a, b) => a.name.localeCompare(b.name))
+
+  useEscapeKey(creatingIngredient ? () => setCreatingIngredient(null) : onCancel)
 
   function addRow() {
     setFocusRowIndex(rows.length)
@@ -66,8 +79,8 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
     }, duplicateMode ? undefined : meal?.id)
   }
 
-  return (
-    <div className="modal-backdrop" onClick={onCancel}>
+  return <>
+    <div className="modal-backdrop" onClick={onCancel} aria-hidden={creatingIngredient ? true : undefined}>
       <div className="modal meal-form-modal" role="dialog" aria-modal="true" aria-labelledby="meal-form-title" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div><div className="eyebrow">MEAL DETAILS</div><h2 id="meal-form-title">{duplicateMode ? 'Duplicate meal' : meal ? 'Edit meal' : 'New meal'}</h2></div>
@@ -94,7 +107,7 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
               const ingredient = ingredients.find((item) => item.id === row.ingredientId)
               const category = proteinCategories.find((item) => item.id === ingredient?.proteinCategoryId)
               return <div className="ingredient-row" key={index}>
-                <IngredientCombobox
+                <IngredientPicker
                   label={`Ingredient ${index + 1}`}
                   ingredients={ingredients}
                   value={row.ingredientId}
@@ -104,6 +117,9 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
                     if (ingredientId) setFocusRowIndex(null)
                     setError('')
                   }}
+                  onCreate={onCreateIngredient
+                    ? (ingredientName) => setCreatingIngredient({ rowIndex: index, name: ingredientName })
+                    : undefined}
                 />
                 <input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.25" value={row.quantity} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Number(event.target.value) } : item))} />
                 <span>{ingredient?.unit ?? ''}</span>
@@ -111,7 +127,7 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
                 <button type="button" className="ingredient-row-remove" onClick={() => setRows(rows.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ingredient ${index + 1}`} title="Remove ingredient">×</button>
               </div>
             })}
-            {ingredients.length > 0 ? <button type="button" className="secondary" onClick={() => { addRow(); setError('') }}>+ Add ingredient</button> : <p className="form-empty-note">Your ingredient library is empty. Close this form and add an ingredient from Manage library.</p>}
+            <button type="button" className="secondary" onClick={() => { addRow(); setError('') }}>+ Add ingredient</button>
           </div>
         </section>
 
@@ -134,5 +150,22 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
         <div className="modal-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="button" className="primary" onClick={save}>Save meal</button></div>
       </div>
     </div>
-  )
+
+    {creatingIngredient && onCreateIngredient && (
+      <IngredientEditor
+        ingredients={ingredients}
+        proteinCategories={proteinCategories}
+        shoppingCategories={shoppingCategories}
+        initialName={creatingIngredient.name}
+        onCancel={() => setCreatingIngredient(null)}
+        onSave={(ingredient) => {
+          onCreateIngredient(ingredient)
+          setRows((current) => current.map((row, index) => index === creatingIngredient.rowIndex ? { ...row, ingredientId: ingredient.id } : row))
+          setFocusRowIndex(null)
+          setCreatingIngredient(null)
+          setError('')
+        }}
+      />
+    )}
+  </>
 }

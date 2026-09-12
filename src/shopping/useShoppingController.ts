@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
+import { findIngredientByName } from '../ingredients/catalog'
 import { defaultShoppingCategories } from '../types'
 import type { AppState, ManualShoppingItem, ShoppingCategory } from '../types'
 import { dateKey } from '../utils/dates'
 import { slug } from '../utils/text'
-import { ensureCatalogIngredient } from './ingredientCatalog'
 import {
   buildShoppingList,
   buildRequiredShoppingQuantities,
@@ -176,7 +176,7 @@ export function useShoppingController({
     })
   }
 
-  function addCatalogShoppingItem(name: string, shoppingCategoryId: string | null = null) {
+  function addShoppingItem(name: string, shoppingCategoryId: string | null = null) {
     if (!state) return
     const trimmed = name.trim()
     if (!trimmed) return
@@ -185,22 +185,26 @@ export function useShoppingController({
     const normalized = trimmed.toLowerCase()
     if (current.some((item) => !item.checked && item.name.trim().toLowerCase() === normalized)) return
 
-    const catalog = ensureCatalogIngredient(state.ingredients, trimmed, shoppingCategoryId)
-    const ingredient = catalog.ingredient
+    const existingIngredient = findIngredientByName(state.ingredients, trimmed)
+    const linkedIngredient = existingIngredient && !existingIngredient.shoppingCategoryId && shoppingCategoryId
+      ? { ...existingIngredient, shoppingCategoryId }
+      : existingIngredient
+    const ingredients = linkedIngredient && linkedIngredient !== existingIngredient
+      ? state.ingredients.map((item) => item.id === linkedIngredient.id ? linkedIngredient : item)
+      : state.ingredients
 
     const item: ManualShoppingItem = {
       id: crypto.randomUUID(),
-      name: trimmed,
+      name: linkedIngredient?.name ?? trimmed,
       checked: false,
-      shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
-      ingredientId: ingredient.id,
-      quantity: 1,
-      unit: ingredient.unit,
+      shoppingCategoryId: linkedIngredient?.shoppingCategoryId ?? shoppingCategoryId ?? null,
+      ingredientId: linkedIngredient?.id ?? null,
+      ...(linkedIngredient ? { quantity: 1, unit: linkedIngredient.unit } : {}),
     }
 
     update({
       ...state,
-      ingredients: catalog.ingredients,
+      ingredients,
       manualShoppingItems: {
         ...state.manualShoppingItems,
         [shoppingWeekKey]: [...current, item],
@@ -209,11 +213,11 @@ export function useShoppingController({
   }
 
   function addManualShoppingItem(name: string) {
-    addCatalogShoppingItem(name)
+    addShoppingItem(name)
   }
 
   function addHistoryItemToShopping(name: string, shoppingCategoryId: string | null = null) {
-    addCatalogShoppingItem(name, shoppingCategoryId)
+    addShoppingItem(name, shoppingCategoryId)
   }
 
   function setShoppingItemCategory(

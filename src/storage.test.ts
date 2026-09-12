@@ -157,49 +157,39 @@ describe('normalizeState', () => {
     })
 
     expect(result.manualShoppingItems['2026-08-17'][0]).toMatchObject({ ingredientId: 'milk', quantity: 2, unit: 'cup' })
-    expect(result.manualShoppingItems['2026-08-17'][1]).toMatchObject({ ingredientId: 'other', quantity: undefined, unit: undefined })
-    expect(result.ingredients).toContainEqual({
-      id: 'other',
-      name: 'Other',
-      unit: 'each',
-      proteinCategoryId: null,
-      shoppingCategoryId: null,
-    })
+    expect(result.manualShoppingItems['2026-08-17'][1]).toMatchObject({ ingredientId: null, quantity: undefined, unit: undefined })
+    expect(result.ingredients).toEqual([
+      expect.objectContaining({ id: 'milk', name: 'Milk' }),
+    ])
   })
 
-  it('migrates manual and history-only items into one durable ingredient catalog', () => {
+  it('preserves generic manual and history items without promoting them into the ingredient catalog', () => {
     const result = normalizeState({
       ingredients: [],
       manualShoppingItems: {
         '2026-08-17': [{
-          id: 'manual-sweet-potatoes',
-          name: 'Sweet potatoes',
+          id: 'manual-paper-towels',
+          name: 'Paper towels',
           checked: false,
-          shoppingCategoryId: 'produce',
+          shoppingCategoryId: 'aisle',
         }],
       },
       shoppingHistory: [{
-        id: 'history-sweet-potatoes',
-        name: ' sweet potatoes ',
+        id: 'history-paper-towels',
+        name: ' paper towels ',
         lastPurchasedAt: '2026-08-01',
-        shoppingCategoryId: 'produce',
+        shoppingCategoryId: 'aisle',
       }],
     })
 
-    expect(result.ingredients).toEqual([{
-      id: 'sweet-potatoes',
-      name: 'Sweet potatoes',
-      unit: 'each',
-      proteinCategoryId: null,
-      shoppingCategoryId: 'produce',
-    }])
+    expect(result.ingredients).toEqual([])
     expect(result.manualShoppingItems['2026-08-17'][0]).toMatchObject({
-      ingredientId: 'sweet-potatoes',
-      shoppingCategoryId: 'produce',
+      ingredientId: null,
+      shoppingCategoryId: 'aisle',
     })
     expect(result.shoppingHistory[0]).toMatchObject({
-      ingredientId: 'sweet-potatoes',
-      shoppingCategoryId: 'produce',
+      ingredientId: null,
+      shoppingCategoryId: 'aisle',
     })
   })
 

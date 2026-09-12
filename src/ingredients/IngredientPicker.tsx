@@ -1,16 +1,19 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { Ingredient } from '../types'
 import { sortBySearch } from '../utils/search'
+import './IngredientPicker.css'
 
-type IngredientComboboxProps = {
+type IngredientPickerProps = {
   label: string
   ingredients: Ingredient[]
   value: string
   autoFocus?: boolean
   onChange: (ingredientId: string) => void
+  onCreate?: (name: string) => void
 }
 
-export function IngredientCombobox({ label, ingredients, value, autoFocus = false, onChange }: IngredientComboboxProps) {
+export function IngredientPicker({ label, ingredients, value, autoFocus = false, onChange, onCreate }: IngredientPickerProps) {
   const listboxId = useId()
   const selectedIngredient = ingredients.find((ingredient) => ingredient.id === value)
   const [inputValue, setInputValue] = useState(selectedIngredient?.name ?? '')
@@ -26,6 +29,12 @@ export function IngredientCombobox({ label, ingredients, value, autoFocus = fals
     () => sortBySearch(ingredients, filterText, (ingredient) => ingredient.name),
     [filterText, ingredients],
   )
+  const createName = filterText.trim()
+  const hasExactMatch = createName.length > 0 && ingredients.some(
+    (ingredient) => ingredient.name.trim().toLocaleLowerCase() === createName.toLocaleLowerCase(),
+  )
+  const showCreate = Boolean(onCreate) && createName.length > 0 && !hasExactMatch
+  const optionCount = options.length + (showCreate ? 1 : 0)
 
   useEffect(() => {
     setActiveIndex(0)
@@ -38,7 +47,13 @@ export function IngredientCombobox({ label, ingredients, value, autoFocus = fals
     setOpen(false)
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+  function create() {
+    if (!showCreate || !onCreate) return
+    onCreate(createName)
+    setOpen(false)
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') {
       if (!open) return
       event.preventDefault()
@@ -50,20 +65,25 @@ export function IngredientCombobox({ label, ingredients, value, autoFocus = fals
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       if (!open) setOpen(true)
-      else if (options.length > 0) setActiveIndex((index) => (index + 1) % options.length)
+      else if (optionCount > 0) setActiveIndex((index) => (index + 1) % optionCount)
       return
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
       if (!open) setOpen(true)
-      else if (options.length > 0) setActiveIndex((index) => (index - 1 + options.length) % options.length)
+      else if (optionCount > 0) setActiveIndex((index) => (index - 1 + optionCount) % optionCount)
       return
     }
 
-    if (event.key === 'Enter' && open && options[activeIndex]) {
-      event.preventDefault()
-      choose(options[activeIndex])
+    if (event.key === 'Enter' && open) {
+      if (activeIndex < options.length && options[activeIndex]) {
+        event.preventDefault()
+        choose(options[activeIndex])
+      } else if (showCreate && activeIndex === options.length) {
+        event.preventDefault()
+        create()
+      }
     }
   }
 
@@ -74,7 +94,13 @@ export function IngredientCombobox({ label, ingredients, value, autoFocus = fals
         aria-autocomplete="list"
         aria-controls={listboxId}
         aria-expanded={open}
-        aria-activedescendant={open && options[activeIndex] ? `${listboxId}-${options[activeIndex].id}` : undefined}
+        aria-activedescendant={
+          open && activeIndex < options.length && options[activeIndex]
+            ? `${listboxId}-${options[activeIndex].id}`
+            : open && showCreate && activeIndex === options.length
+              ? `${listboxId}-create`
+              : undefined
+        }
         role="combobox"
         autoComplete="off"
         autoFocus={autoFocus}
@@ -114,7 +140,23 @@ export function IngredientCombobox({ label, ingredients, value, autoFocus = fals
               <small>{ingredient.unit}</small>
             </button>
           ))}
-          {options.length === 0 && <div className="ingredient-combobox-empty">No ingredients match.</div>}
+          {showCreate && (
+            <button
+              id={`${listboxId}-create`}
+              type="button"
+              role="option"
+              aria-label={`Create “${createName}”…`}
+              aria-selected={activeIndex === options.length}
+              className={`ingredient-combobox-create ${activeIndex === options.length ? 'active' : ''}`}
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={create}
+              onMouseEnter={() => setActiveIndex(options.length)}
+            >
+              <span>+ Create “{createName}”…</span>
+            </button>
+          )}
+          {options.length === 0 && !showCreate && <div className="ingredient-combobox-empty">No ingredients match.</div>}
         </div>
       )}
     </div>

@@ -60,6 +60,10 @@
   font-size: 10px;
 }
 
+.ingredient-combobox-create span {
+  font-weight: 700;
+}
+
 .ingredient-combobox-empty {
   padding: 10px;
   color: var(--muted);
