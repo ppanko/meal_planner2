@@ -36,8 +36,8 @@ export function MobilePlannerSlot({
     <div className={`mobile-planner-slot ${firstCustom ? 'first-custom-mobile-slot' : ''}`}>
       <div className="mobile-slot-label">{label}</div>
       <div className="mobile-slot-content">
-        {meals.map((meal) => (
-          <div className="mobile-planned-meal" key={meal.id}>
+        {meals.map((meal, index) => (
+          <div className="mobile-planned-meal" key={`${meal.id}-${index}`}>
             <button
               type="button"
               className="planner-meal-details-trigger"
@@ -147,8 +147,8 @@ export function PlannerSlot({
     >
       {meals.length > 0 ? (
         <div className="planned-meal-stack">
-          {meals.map((mealData) => (
-            <div className="planned-meal" key={mealData.id}>
+          {meals.map((mealData, index) => (
+            <div className="planned-meal" key={`${mealData.id}-${index}`}>
               <div className="planned-meal-main">
                 <button
                   type="button"

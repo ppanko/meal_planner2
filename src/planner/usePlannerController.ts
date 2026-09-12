@@ -218,7 +218,11 @@ export function usePlannerController({
 
     const planner: Planner = clone(state.planner)
     const current = planner[day]?.[rowId] ?? []
-    const next = current.filter((id) => id !== mealId)
+    const mealIndex = current.indexOf(mealId)
+    if (mealIndex < 0) return
+
+    const next = [...current]
+    next.splice(mealIndex, 1)
 
     if (planner[day]) planner[day][rowId] = next
 

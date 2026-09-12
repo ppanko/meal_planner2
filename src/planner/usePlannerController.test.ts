@@ -184,9 +184,9 @@ describe('usePlannerController meal placement', () => {
     expect(setView).toHaveBeenCalledWith('planner')
   })
 
-  it('removes every occurrence of a meal and clears a now-empty slot note', () => {
+  it('removes a meal and clears a now-empty slot note', () => {
     const state = createAppState({
-      planner: { '2026-08-17': { Dinner: ['tacos', 'tacos'] } },
+      planner: { '2026-08-17': { Dinner: ['tacos'] } },
       plannerNotes: { '2026-08-17': { Dinner: 'Use salsa', Lunch: 'Keep' } },
     })
     const { result, updateWithUndo } = setup(state)
