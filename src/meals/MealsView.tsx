@@ -78,7 +78,11 @@ function ProteinFilterControls({
             className={selected ? 'active' : ''}
             aria-pressed={selected}
             onClick={() => onChange(option.id)}
-            style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}
+            style={{
+              flex: '0 0 auto',
+              whiteSpace: 'nowrap',
+              ...(scrollable ? { minHeight: 36, padding: '7px 10px' } : {}),
+            }}
           >
             {option.color && (
               <span
@@ -134,7 +138,7 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
         className="section-header"
         style={isMobile ? { alignItems: 'center', gap: 10, marginBottom: 8 } : undefined}
       >
-        <div><div className="eyebrow">LIBRARY</div><h2>Your Meals</h2></div>
+        <div>{!isMobile && <div className="eyebrow">LIBRARY</div>}<h2>Your Meals</h2></div>
         <div className="meal-header-actions" style={isMobile ? { flexDirection: 'row', gap: 6 } : undefined}>
           <button
             className="secondary"
