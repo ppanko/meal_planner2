@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import './styles.css'
-import './mobile-focus.css'
+import baseCss from './styles.css?raw'
+import focusCss from './mobile-focus.css?raw'
+
+let styleElement: HTMLStyleElement | null = null
 
 afterEach(() => {
   document.body.replaceChildren()
+  styleElement?.remove()
+  styleElement = null
 })
 
 describe('modal form control sizing', () => {
-  it('does not let modal controls inherit the 11px label font size', () => {
+  it('keeps modal controls at 16px so iOS does not auto-zoom them on focus', () => {
+    styleElement = document.createElement('style')
+    styleElement.textContent = `${baseCss}\n${focusCss}`
+    document.head.append(styleElement)
+
     const modal = document.createElement('div')
     modal.className = 'modal'
     modal.innerHTML = `
