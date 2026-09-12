@@ -13,6 +13,7 @@ function props() {
     ingredients: state.ingredients,
     proteinCategories: seedProteinCategories,
     onNew: vi.fn(),
+    onNewIngredient: vi.fn(),
     onManageLibrary: vi.fn(),
     onStartCooking: vi.fn(),
     onEdit: vi.fn(),
