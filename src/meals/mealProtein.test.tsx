@@ -44,7 +44,7 @@ describe('meal protein categories', () => {
     )).toEqual([])
   })
 
-  it('renders derived dots and a fallback None dot', () => {
+  it('renders derived dots and a grouped fallback None dot', () => {
     const { rerender } = render(
       <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={seedProteinCategories} />,
     )
@@ -58,7 +58,9 @@ describe('meal protein categories', () => {
         proteinCategories={seedProteinCategories}
       />,
     )
-    expect(screen.getByLabelText('None')).toBeInTheDocument()
+    const noneDot = screen.getByLabelText('None')
+    expect(noneDot).toBeInTheDocument()
+    expect(noneDot.closest('.protein-dot-group')).not.toBeNull()
   })
 
   it('renders a safe fallback dot without a category', () => {

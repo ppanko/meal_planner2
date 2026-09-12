@@ -49,7 +49,11 @@ export function MealProteinDots({
 
   if (categories.length === 0) {
     const none = proteinCategories.find((category) => category.id === 'none')
-    return <ProteinDot category={none} />
+    return (
+      <span className="protein-dot-group">
+        <ProteinDot category={none} />
+      </span>
+    )
   }
 
   return (
