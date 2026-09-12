@@ -5,7 +5,6 @@ import { MealBrowser } from './MealBrowser'
 import { MobileMealPicker } from './MobileMealPicker'
 import type { MobilePickerSlot } from './MobileMealPicker'
 import { PlannerRowEditor } from './PlannerRowEditor'
-import './PlannerView.css'
 import { dayShort, defaultPlannerRows, filterMeals, getPlannerRows, getSlotMealIds } from './plannerUtils'
 import { MobilePlannerSlot, PlannerSlot } from './PlannerSlots'
 
