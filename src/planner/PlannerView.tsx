@@ -1,12 +1,26 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AppState, Meal, ProteinCategory } from '../types'
 import { dateKey, formatRange } from '../utils/dates'
 import { MealBrowser } from './MealBrowser'
 import { MobileMealPicker } from './MobileMealPicker'
 import type { MobilePickerSlot } from './MobileMealPicker'
 import { PlannerRowEditor } from './PlannerRowEditor'
+import './PlannerView.css'
 import { dayShort, defaultPlannerRows, filterMeals, getPlannerRows, getSlotMealIds } from './plannerUtils'
 import { MobilePlannerSlot, PlannerSlot } from './PlannerSlots'
+
+const dayLong = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+function getDefaultMobileCollapsedDays(weekDates: Date[], weekOffset: number) {
+  const today = dateKey(new Date())
+  const isCurrentWeek = weekOffset === 0 && weekDates.some((date) => dateKey(date) === today)
+
+  return new Set(
+    isCurrentWeek
+      ? weekDates.map((date) => dateKey(date)).filter((day) => day < today)
+      : [],
+  )
+}
 
 export function PlannerView({
   state,
@@ -41,12 +55,20 @@ export function PlannerView({
   const [newRowLabel, setNewRowLabel] = useState('')
   const [showRowEditor, setShowRowEditor] = useState(false)
   const [mobilePickerSlot, setMobilePickerSlot] = useState<MobilePickerSlot | null>(null)
+  const visibleWeekKey = `${dateKey(weekDates[0])}:${dateKey(weekDates[weekDates.length - 1])}`
+  const [mobileCollapsedDays, setMobileCollapsedDays] = useState<Set<string>>(
+    () => getDefaultMobileCollapsedDays(weekDates, weekOffset),
+  )
   const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
 
   const filteredMeals = useMemo(
     () => filterMeals(state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter),
     [state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter],
   )
+
+  useEffect(() => {
+    setMobileCollapsedDays(getDefaultMobileCollapsedDays(weekDates, weekOffset))
+  }, [visibleWeekKey, weekOffset])
 
   function savePlannerRow() {
     addPlannerRow(newRowLabel)
@@ -57,6 +79,15 @@ export function PlannerView({
   function cancelPlannerRow() {
     setNewRowLabel('')
     setShowRowEditor(false)
+  }
+
+  function toggleMobileDay(day: string) {
+    setMobileCollapsedDays((collapsedDays) => {
+      const nextCollapsedDays = new Set(collapsedDays)
+      if (nextCollapsedDays.has(day)) nextCollapsedDays.delete(day)
+      else nextCollapsedDays.add(day)
+      return nextCollapsedDays
+    })
   }
 
   return (
@@ -168,14 +199,27 @@ export function PlannerView({
         <div className="mobile-planner-days">
           {weekDates.map((date, dayIndex) => {
             const dayKeyValue = dateKey(date)
+            const isCollapsed = mobileCollapsedDays.has(dayKeyValue)
+            const dayName = dayLong[dayIndex]
+
             return (
               <section className="mobile-day-card" key={dayKeyValue}>
                 <div className="mobile-day-header">
                   <span>{dayShort[dayIndex]}</span>
                   <strong>{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</strong>
+                  <button
+                    type="button"
+                    className="mobile-day-toggle"
+                    onClick={() => toggleMobileDay(dayKeyValue)}
+                    aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${dayName}`}
+                    aria-expanded={!isCollapsed}
+                    title={`${isCollapsed ? 'Expand' : 'Collapse'} ${dayName}`}
+                  >
+                    {isCollapsed ? '⌄' : '⌃'}
+                  </button>
                 </div>
 
-                {getPlannerRows(state, weekDates).map((row, rowIndex) => {
+                {!isCollapsed && getPlannerRows(state, weekDates).map((row, rowIndex) => {
                   const mealIds = getSlotMealIds(state.planner, dayKeyValue, row.id)
                   const meals = mealIds
                     .map((mealId) => state.meals.find((meal) => meal.id === mealId))
