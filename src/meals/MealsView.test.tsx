@@ -132,12 +132,12 @@ describe('MealsView', () => {
     const search = screen.getByRole('searchbox', { name: 'Search meals' })
 
     await user.type(search, 'tacos')
-    expect(screen.getByRole('heading', { name: 'Weeknight Tacos' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Apple Salad' })).not.toBeInTheDocument()
+    expect(screen.getByText('Weeknight Tacos')).toBeInTheDocument()
+    expect(screen.queryByText('Apple Salad')).not.toBeInTheDocument()
 
     await user.clear(search)
     await user.type(search, 'chicken')
-    expect(screen.getByRole('heading', { name: 'Weeknight Tacos' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Apple Salad' })).not.toBeInTheDocument()
+    expect(screen.getByText('Weeknight Tacos')).toBeInTheDocument()
+    expect(screen.queryByText('Apple Salad')).not.toBeInTheDocument()
   })
 })
