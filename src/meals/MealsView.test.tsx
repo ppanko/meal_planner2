@@ -210,4 +210,121 @@ describe('MealsView', () => {
     expect(screen.getByText('Chicken Salad')).toBeInTheDocument()
     expect(screen.queryByText('Beef Tacos')).not.toBeInTheDocument()
   })
+
+  it('filters desktop meal columns by protein category including None', async () => {
+    const state = createAppState()
+    const ingredients = [
+      { id: 'chicken', name: 'Chicken thigh', unit: 'lb', proteinCategoryId: 'chicken' },
+      { id: 'beef', name: 'Ground beef', unit: 'lb', proteinCategoryId: 'beef' },
+      { id: 'apple', name: 'Apple', unit: 'each', proteinCategoryId: null },
+    ]
+    const baseMeal = state.meals[0]
+    const chickenBreakfast = {
+      ...baseMeal,
+      id: 'chicken-breakfast',
+      name: 'Chicken Breakfast',
+      type: 'Breakfast' as const,
+      ingredients: [{ ingredientId: 'chicken', quantity: 1 }],
+    }
+    const plainLunch = {
+      ...baseMeal,
+      id: 'plain-lunch',
+      name: 'Apple Lunch',
+      type: 'Lunch' as const,
+      ingredients: [{ ingredientId: 'apple', quantity: 1 }],
+    }
+    const beefDinner = {
+      ...baseMeal,
+      id: 'beef-dinner',
+      name: 'Beef Dinner',
+      type: 'Dinner' as const,
+      ingredients: [{ ingredientId: 'beef', quantity: 1 }],
+    }
+    const user = userEvent.setup()
+
+    render(
+      <MealsView
+        meals={[beefDinner, plainLunch, chickenBreakfast]}
+        ingredients={ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={vi.fn()}
+        onManageLibrary={vi.fn()}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    const chickenFilter = screen.getByRole('button', { name: 'Chicken' })
+    await user.click(chickenFilter)
+
+    expect(chickenFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Chicken Breakfast')).toBeInTheDocument()
+    expect(screen.queryByText('Apple Lunch')).not.toBeInTheDocument()
+    expect(screen.queryByText('Beef Dinner')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Lunch' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Dinner' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'None' }))
+
+    expect(screen.queryByText('Chicken Breakfast')).not.toBeInTheDocument()
+    expect(screen.getByText('Apple Lunch')).toBeInTheDocument()
+    expect(screen.queryByText('Beef Dinner')).not.toBeInTheDocument()
+  })
+
+  it('keeps the protein filter active while switching mobile meal tabs', async () => {
+    useMobileViewport()
+    const state = createAppState()
+    const ingredients = [
+      { id: 'chicken', name: 'Chicken thigh', unit: 'lb', proteinCategoryId: 'chicken' },
+      { id: 'beef', name: 'Ground beef', unit: 'lb', proteinCategoryId: 'beef' },
+    ]
+    const baseMeal = state.meals[0]
+    const breakfastChicken = {
+      ...baseMeal,
+      id: 'breakfast-chicken',
+      name: 'Breakfast Chicken',
+      type: 'Breakfast' as const,
+      ingredients: [{ ingredientId: 'chicken', quantity: 1 }],
+    }
+    const lunchChicken = {
+      ...baseMeal,
+      id: 'lunch-chicken',
+      name: 'Lunch Chicken',
+      type: 'Lunch' as const,
+      ingredients: [{ ingredientId: 'chicken', quantity: 1 }],
+    }
+    const lunchBeef = {
+      ...baseMeal,
+      id: 'lunch-beef',
+      name: 'Lunch Beef',
+      type: 'Lunch' as const,
+      ingredients: [{ ingredientId: 'beef', quantity: 1 }],
+    }
+    const user = userEvent.setup()
+
+    render(
+      <MealsView
+        meals={[lunchBeef, lunchChicken, breakfastChicken]}
+        ingredients={ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={vi.fn()}
+        onManageLibrary={vi.fn()}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chicken' }))
+    expect(screen.getByText('Breakfast Chicken')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Lunch' }))
+
+    expect(screen.getByRole('button', { name: 'Chicken' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Lunch Chicken')).toBeInTheDocument()
+    expect(screen.queryByText('Lunch Beef')).not.toBeInTheDocument()
+  })
 })
