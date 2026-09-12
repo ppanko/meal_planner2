@@ -16,6 +16,13 @@ export function CookingView({ meal, ingredients, onClose }: CookingViewProps) {
   const [checkedSteps, setCheckedSteps] = useState<Set<number>>(new Set())
   const recipeUrl = normalizeRecipeUrl(meal.recipeUrl ?? '')
   const steps = (meal.instructions ?? []).filter((step) => step.trim())
+  const cookingIngredients = meal.ingredients
+    .map((item, index) => ({
+      item,
+      index,
+      ingredient: ingredients.find((candidate) => candidate.id === item.ingredientId),
+    }))
+    .sort((a, b) => (a.ingredient?.name ?? '').localeCompare(b.ingredient?.name ?? ''))
 
   function toggle(setter: React.Dispatch<React.SetStateAction<Set<number>>>, current: Set<number>, index: number) {
     const next = new Set(current)
@@ -36,8 +43,7 @@ export function CookingView({ meal, ingredients, onClose }: CookingViewProps) {
       <section className="cooking-section">
         <h3>Ingredients</h3>
         <div className="cooking-checklist">
-          {meal.ingredients.map((item, index) => {
-            const ingredient = ingredients.find((candidate) => candidate.id === item.ingredientId)
+          {cookingIngredients.map(({ item, index, ingredient }) => {
             if (!ingredient) return null
             const checked = checkedIngredients.has(index)
             return <label className={checked ? 'checked' : ''} key={`${item.ingredientId}-${index}`}>
