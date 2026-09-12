@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import './styles.css'
+import './mobile-focus.css'
 
 afterEach(() => {
   document.body.replaceChildren()
