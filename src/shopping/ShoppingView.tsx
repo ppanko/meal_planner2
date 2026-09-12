@@ -94,7 +94,7 @@ export function ShoppingView(props: ShoppingViewProps) {
             </>
           )}
         </div>
-        <ShoppingHistory history={filteredHistory} totalCount={props.history.length} search={historySearch} onSearchChange={setHistorySearch} neededNames={manualNeededNames} onAdd={props.onAddHistory} onDelete={props.onDeleteHistory} />
+        <ShoppingHistory history={filteredHistory} categories={props.shoppingCategories} totalCount={props.history.length} search={historySearch} onSearchChange={setHistorySearch} neededNames={manualNeededNames} onAdd={props.onAddHistory} onDelete={props.onDeleteHistory} />
       </div>
       {showCategoryManager && (
         <ShoppingCategoryDialog
