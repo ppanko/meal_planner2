@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Ingredient, Meal, ProteinCategory } from '../types'
+import { sortBySearch } from '../utils/search'
 import { slug } from '../utils/text'
 import { ProteinDot } from './mealProtein'
 import { useEscapeKey } from './useEscapeKey'
@@ -31,10 +32,7 @@ export function MealLibraryManager({ meals, ingredients, proteinCategories, onCl
     ...ingredients.map((ingredient) => ingredient.proteinCategoryId).filter((id): id is string => Boolean(id)),
     ...meals.map((meal) => meal.proteinCategoryOverrideId).filter((id): id is string => Boolean(id)),
   ]), [ingredients, meals])
-  const visibleIngredients = ingredients
-    .filter((ingredient) => ingredient.name.toLowerCase().includes(query.trim().toLowerCase()))
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const visibleIngredients = sortBySearch(ingredients, query, (ingredient) => ingredient.name)
   const manageableCategories = proteinCategories.filter((category) => category.id !== 'none').slice().sort((a, b) => a.name.localeCompare(b.name))
 
   function addIngredient(event: React.FormEvent) {
