@@ -93,4 +93,51 @@ describe('MealsView', () => {
       '1 each Zucchini',
     ])
   })
+
+  it('filters meals by meal name or ingredient name', async () => {
+    const state = createAppState()
+    const ingredients = [
+      { id: 'chicken', name: 'Chicken thigh', unit: 'lb', proteinCategoryId: 'chicken' },
+      { id: 'apple', name: 'Apple', unit: 'each', proteinCategoryId: null },
+    ]
+    const baseMeal = state.meals[0]
+    const tacos = {
+      ...baseMeal,
+      id: 'tacos',
+      name: 'Weeknight Tacos',
+      ingredients: [{ ingredientId: 'chicken', quantity: 1 }],
+    }
+    const salad = {
+      ...baseMeal,
+      id: 'salad',
+      name: 'Apple Salad',
+      ingredients: [{ ingredientId: 'apple', quantity: 2 }],
+    }
+    const user = userEvent.setup()
+
+    render(
+      <MealsView
+        meals={[tacos, salad]}
+        ingredients={ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={vi.fn()}
+        onManageLibrary={vi.fn()}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    const search = screen.getByRole('searchbox', { name: 'Search meals' })
+
+    await user.type(search, 'tacos')
+    expect(screen.getByRole('heading', { name: 'Weeknight Tacos' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Apple Salad' })).not.toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, 'chicken')
+    expect(screen.getByRole('heading', { name: 'Weeknight Tacos' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Apple Salad' })).not.toBeInTheDocument()
+  })
 })
