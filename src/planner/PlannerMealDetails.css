@@ -13,6 +13,11 @@
   font-weight: inherit;
 }
 
+.mobile-planned-meal > .planner-meal-details-trigger {
+  color: inherit;
+  font-size: inherit;
+}
+
 .planner-meal-details-trigger > span:not(.protein-dot-group) {
   flex: 1 1 auto;
   min-width: 0;
