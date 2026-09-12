@@ -1,0 +1,70 @@
+.planner-meal-details-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  font-weight: inherit;
+}
+
+.planner-meal-details-trigger > span:not(.protein-dot-group) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-meal-details {
+  width: min(420px, 100%);
+}
+
+.planner-meal-details-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.planner-meal-details-header h2 {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+
+.planner-meal-details-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.planner-meal-details h3 {
+  margin: 20px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+
+.planner-meal-details ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #4f4a43;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.planner-meal-details-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

@@ -3,6 +3,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { Ingredient, Meal, ProteinCategory } from '../types'
 import { MealProteinDots } from '../meals/mealProtein'
+import { PlannerMealDetails } from './PlannerMealDetails'
 
 export function MobilePlannerSlot({
   label,
@@ -29,6 +30,7 @@ export function MobilePlannerSlot({
 }) {
   const [editingNote, setEditingNote] = useState(false)
   const [draftNote, setDraftNote] = useState(note)
+  const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null)
 
   useEffect(() => setDraftNote(note), [note])
 
@@ -41,8 +43,15 @@ export function MobilePlannerSlot({
       <div className="mobile-slot-content">
         {meals.map((meal) => (
           <div className="mobile-planned-meal" key={meal.id}>
-            <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
-            <span>{meal.name}</span>
+            <button
+              type="button"
+              className="planner-meal-details-trigger"
+              onClick={() => setSelectedMeal(meal)}
+              aria-label={`View ${meal.name} ingredients`}
+            >
+              <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
+              <span>{meal.name}</span>
+            </button>
             <button type="button" onClick={() => onRemoveMeal(meal.id)}>×</button>
           </div>
         ))}
@@ -69,6 +78,7 @@ export function MobilePlannerSlot({
           </button>
         )}
       </div>
+      {selectedMeal && <PlannerMealDetails meal={selectedMeal} ingredients={ingredients} onClose={() => setSelectedMeal(null)} />}
     </div>
   )
 }
@@ -129,6 +139,7 @@ export function PlannerSlot({
 
   const [editingNote, setEditingNote] = useState(false)
   const [draftNote, setDraftNote] = useState(note)
+  const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null)
 
   useEffect(() => {
     setDraftNote(note)
@@ -144,8 +155,15 @@ export function PlannerSlot({
           {meals.map((mealData) => (
             <div className="planned-meal" key={mealData.id}>
               <div className="planned-meal-main">
-                <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
-                <span>{mealData.name}</span>
+                <button
+                  type="button"
+                  className="planner-meal-details-trigger"
+                  onClick={() => setSelectedMeal(mealData)}
+                  aria-label={`View ${mealData.name} ingredients`}
+                >
+                  <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
+                  <span>{mealData.name}</span>
+                </button>
                 <button
                   type="button"
                   className="remove-slot-meal"
@@ -217,6 +235,7 @@ export function PlannerSlot({
       ) : (
         <span className="empty-slot">Drop meal here</span>
       )}
+      {selectedMeal && <PlannerMealDetails meal={selectedMeal} ingredients={ingredients} onClose={() => setSelectedMeal(null)} />}
     </div>
   )
 }
