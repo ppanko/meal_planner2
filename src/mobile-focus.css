@@ -1,4 +1,4 @@
-/* iOS Safari zooms focused text controls when their font size is below 16px. */
+/* iOS Safari zooms focused text controls below 16px; 15px is intentionally red for the regression check. */
 .modal input,
 .modal select,
 .modal textarea {
