@@ -327,4 +327,36 @@ describe('MealsView', () => {
     expect(screen.getByText('Lunch Chicken')).toBeInTheDocument()
     expect(screen.queryByText('Lunch Beef')).not.toBeInTheDocument()
   })
+
+  it('keeps compact mobile header actions accessible', async () => {
+    useMobileViewport()
+    const state = createAppState()
+    const onNew = vi.fn()
+    const onManageLibrary = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <MealsView
+        meals={state.meals}
+        ingredients={state.ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={onNew}
+        onManageLibrary={onManageLibrary}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('LIBRARY')).not.toBeInTheDocument()
+    expect(screen.getByText('Manage')).toBeInTheDocument()
+    expect(screen.getByText('+ New')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Manage library' }))
+    await user.click(screen.getByRole('button', { name: '+ New meal' }))
+
+    expect(onManageLibrary).toHaveBeenCalledOnce()
+    expect(onNew).toHaveBeenCalledOnce()
+  })
 })
