@@ -55,17 +55,24 @@ function ProteinFilterControls({
   onChange: (value: ProteinFilterValue) => void
   scrollable?: boolean
 }) {
-  const options = [{ id: 'All', name: 'All', color: null }, ...proteinCategories]
+  const sortedCategories = [...proteinCategories].sort((a, b) => {
+    if (a.id === 'none') return 1
+    if (b.id === 'none') return -1
+    return a.name.localeCompare(b.name)
+  })
+  const options = [{ id: 'All', name: 'All', color: null }, ...sortedCategories]
 
   return (
     <div
       className="protein-filter"
       aria-label="Filter meals by protein"
       style={scrollable ? {
+        width: '100%',
+        boxSizing: 'border-box',
         flexWrap: 'nowrap',
         overflowX: 'auto',
         margin: 0,
-        paddingBottom: 4,
+        padding: 0,
         WebkitOverflowScrolling: 'touch',
       } : { margin: 0 }}
     >
@@ -109,10 +116,12 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
 }) {
   const [search, setSearch] = useState('')
   const [proteinFilter, setProteinFilter] = useState<ProteinFilterValue>('All')
-  const [mobileMealType, setMobileMealType] = useState<Meal['type']>(mealTypes[0] ?? 'Breakfast')
+  const [mobileMealTypes, setMobileMealTypes] = useState<Meal['type'][]>([])
   const isMobile = useMobileMealsLayout()
   const hasSearch = search.trim().length > 0
   const hasActiveFilters = hasSearch || proteinFilter !== 'All'
+  const hasMobileMealTypeFilter = mobileMealTypes.length > 0
+  const hasMobileFilters = hasActiveFilters || hasMobileMealTypeFilter
   const visibleMeals = meals.filter((meal) => {
     const ingredientNames = meal.ingredients
       .map((item) => ingredients.find((ingredient) => ingredient.id === item.ingredientId)?.name ?? '')
@@ -121,8 +130,15 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
       && mealMatchesProtein(meal, ingredients, proteinCategories, proteinFilter)
   })
   const mobileMeals = visibleMeals
-    .filter((meal) => meal.type === mobileMealType)
+    .filter((meal) => !hasMobileMealTypeFilter || mobileMealTypes.includes(meal.type))
     .sort((a, b) => a.name.localeCompare(b.name))
+  const showMobileTypePill = mobileMealTypes.length !== 1
+
+  const toggleMobileMealType = (type: Meal['type']) => {
+    setMobileMealTypes((selectedTypes) => selectedTypes.includes(type)
+      ? selectedTypes.filter((selectedType) => selectedType !== type)
+      : [...selectedTypes, type])
+  }
 
   const searchControl = (
     <div className="meal-search-wrap" style={isMobile ? { margin: '8px 0 10px' } : { margin: 0 }}>
@@ -185,23 +201,24 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
             }}
           >
             <div
-              role="tablist"
-              aria-label="Meal type"
-              style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 8 }}
+              role="group"
+              aria-label="Filter meals by meal type"
+              style={{
+                display: 'grid',
+                width: '100%',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: 6,
+                marginBottom: 8,
+              }}
             >
               {mealTypes.map((type) => {
-                const selected = type === mobileMealType
-                const tabId = `mobile-meals-tab-${type.toLowerCase()}`
+                const selected = mobileMealTypes.includes(type)
 
                 return (
                   <button
                     key={type}
-                    id={tabId}
                     type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    aria-controls="mobile-meals-panel"
-                    tabIndex={selected ? 0 : -1}
+                    aria-pressed={selected}
                     className={selected ? 'active' : ''}
                     style={{
                       minHeight: 38,
@@ -212,7 +229,7 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
                       fontSize: 11,
                       fontWeight: 800,
                     }}
-                    onClick={() => setMobileMealType(type)}
+                    onClick={() => toggleMobileMealType(type)}
                   >
                     {type}
                   </button>
@@ -228,18 +245,13 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
             />
           </div>
 
-          <div
-            id="mobile-meals-panel"
-            className="meal-library-full"
-            role="tabpanel"
-            aria-labelledby={`mobile-meals-tab-${mobileMealType.toLowerCase()}`}
-          >
+          <div className="meal-library-full">
             <div className="meal-library-section">
               {mobileMeals.length > 0 ? (
-                mobileMeals.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} showTypePill={false} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)
+                mobileMeals.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} showTypePill={showMobileTypePill} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)
               ) : (
                 <div className="meal-browser-empty">
-                  {hasActiveFilters ? `No ${mobileMealType.toLowerCase()} meals match the current filters.` : `No ${mobileMealType.toLowerCase()} meals yet.`}
+                  {hasMobileFilters ? 'No meals match the current filters.' : 'No meals yet.'}
                 </div>
               )}
             </div>

@@ -168,7 +168,7 @@ describe('MealsView', () => {
     expect(screen.queryByRole('heading', { name: 'Dinner' })).not.toBeInTheDocument()
   })
 
-  it('uses Breakfast, Lunch, and Dinner tabs in the mobile Meals view', async () => {
+  it('shows all meal types by default and lets mobile meal type filters combine', async () => {
     useMobileViewport()
     const state = createAppState()
     const baseMeal = state.meals[0]
@@ -191,22 +191,23 @@ describe('MealsView', () => {
       />,
     )
 
-    const breakfastTab = screen.getByRole('tab', { name: 'Breakfast' })
-    const lunchTab = screen.getByRole('tab', { name: 'Lunch' })
-    const dinnerTab = screen.getByRole('tab', { name: 'Dinner' })
+    const breakfastFilter = screen.getByRole('button', { name: 'Breakfast' })
+    const lunchFilter = screen.getByRole('button', { name: 'Lunch' })
+    const dinnerFilter = screen.getByRole('button', { name: 'Dinner' })
 
-    expect(breakfastTab).toHaveAttribute('aria-selected', 'true')
-    expect(lunchTab).toHaveAttribute('aria-selected', 'false')
-    expect(dinnerTab).toHaveAttribute('aria-selected', 'false')
+    expect(breakfastFilter).toHaveAttribute('aria-pressed', 'false')
+    expect(lunchFilter).toHaveAttribute('aria-pressed', 'false')
+    expect(dinnerFilter).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('Apple Pancakes')).toBeInTheDocument()
-    expect(screen.queryByText('Chicken Salad')).not.toBeInTheDocument()
-    expect(screen.queryByText('Beef Tacos')).not.toBeInTheDocument()
+    expect(screen.getByText('Chicken Salad')).toBeInTheDocument()
+    expect(screen.getByText('Beef Tacos')).toBeInTheDocument()
 
-    await user.click(lunchTab)
+    await user.click(breakfastFilter)
+    await user.click(lunchFilter)
 
-    expect(breakfastTab).toHaveAttribute('aria-selected', 'false')
-    expect(lunchTab).toHaveAttribute('aria-selected', 'true')
-    expect(screen.queryByText('Apple Pancakes')).not.toBeInTheDocument()
+    expect(breakfastFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(lunchFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Apple Pancakes')).toBeInTheDocument()
     expect(screen.getByText('Chicken Salad')).toBeInTheDocument()
     expect(screen.queryByText('Beef Tacos')).not.toBeInTheDocument()
   })
@@ -273,7 +274,7 @@ describe('MealsView', () => {
     expect(screen.queryByText('Beef Dinner')).not.toBeInTheDocument()
   })
 
-  it('keeps the protein filter active while switching mobile meal tabs', async () => {
+  it('keeps the protein filter active while changing mobile meal type filters', async () => {
     useMobileViewport()
     const state = createAppState()
     const ingredients = [
@@ -320,10 +321,13 @@ describe('MealsView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Chicken' }))
     expect(screen.getByText('Breakfast Chicken')).toBeInTheDocument()
+    expect(screen.getByText('Lunch Chicken')).toBeInTheDocument()
+    expect(screen.queryByText('Lunch Beef')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('tab', { name: 'Lunch' }))
+    await user.click(screen.getByRole('button', { name: 'Lunch' }))
 
     expect(screen.getByRole('button', { name: 'Chicken' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Breakfast Chicken')).not.toBeInTheDocument()
     expect(screen.getByText('Lunch Chicken')).toBeInTheDocument()
     expect(screen.queryByText('Lunch Beef')).not.toBeInTheDocument()
   })
