@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Ingredient } from '../types'
 import { MealForm } from './MealForm'
 
-const ingredients = [
+const ingredients: Ingredient[] = [
   { id: 'black-beans', name: 'Black Beans', unit: 'can', proteinCategoryId: null },
   { id: 'chicken-breast', name: 'Chicken Breast', unit: 'lb', proteinCategoryId: null },
   { id: 'lime', name: 'Lime', unit: 'each', proteinCategoryId: null },
@@ -10,6 +12,11 @@ const ingredients = [
 
 const proteinCategories = [
   { id: 'none', name: 'None', color: '#999999' },
+]
+
+const shoppingCategories = [
+  { id: 'produce', name: 'Produce' },
+  { id: 'aisle', name: 'Aisle' },
 ]
 
 describe('MealForm ingredient picker', () => {
@@ -50,6 +57,71 @@ describe('MealForm ingredient picker', () => {
 
     fireEvent.click(screen.getByRole('option', { name: 'Chicken Breast' }))
     expect(search).toHaveValue('Chicken Breast')
+  })
+
+  it('offers to create an ingredient when typed text has no exact catalog match', () => {
+    render(
+      <MealForm
+        meal={null}
+        ingredients={ingredients}
+        proteinCategories={proteinCategories}
+        onCreateIngredient={vi.fn()}
+        onCancel={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ingredient 1' }), { target: { value: 'Shallot' } })
+
+    expect(screen.getByRole('option', { name: 'Create “Shallot”…' })).toBeInTheDocument()
+  })
+
+  it('does not offer inline creation when no persistence callback is available', () => {
+    render(
+      <MealForm
+        meal={null}
+        ingredients={ingredients}
+        proteinCategories={proteinCategories}
+        onCancel={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ingredient 1' }), { target: { value: 'Shallot' } })
+
+    expect(screen.queryByRole('option', { name: 'Create “Shallot”…' })).not.toBeInTheDocument()
+  })
+
+  it('creates a missing ingredient with the shared editor and selects it in the meal row', () => {
+    function Harness() {
+      const [catalog, setCatalog] = useState(ingredients)
+      return (
+        <MealForm
+          meal={null}
+          ingredients={catalog}
+          proteinCategories={proteinCategories}
+          shoppingCategories={shoppingCategories}
+          onCreateIngredient={(ingredient) => setCatalog((current) => [...current, ingredient])}
+          onCancel={vi.fn()}
+          onSave={vi.fn()}
+        />
+      )
+    }
+
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
+    const picker = screen.getByRole('combobox', { name: 'Ingredient 1' })
+    fireEvent.change(picker, { target: { value: 'Shallot' } })
+    fireEvent.click(screen.getByRole('option', { name: 'Create “Shallot”…' }))
+
+    const editor = screen.getByRole('dialog', { name: 'New ingredient' })
+    expect(within(editor).getByLabelText('Name')).toHaveValue('Shallot')
+    fireEvent.change(within(editor).getByLabelText('Shopping category'), { target: { value: 'produce' } })
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save ingredient' }))
+
+    expect(screen.getByRole('combobox', { name: 'Ingredient 1' })).toHaveValue('Shallot')
   })
 
   it('keeps the first typed character when replacing an existing ingredient', () => {

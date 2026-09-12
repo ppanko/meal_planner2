@@ -1,0 +1,23 @@
+.ingredient-editor-modal {
+  width: min(520px, 100%);
+}
+
+.ingredient-editor-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ingredient-editor-name {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 500px) {
+  .ingredient-editor-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ingredient-editor-name {
+    grid-column: auto;
+  }
+}

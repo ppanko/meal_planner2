@@ -15,21 +15,42 @@ function setup() {
     onCreateProteinCategory: vi.fn(),
     onDeleteProteinCategory: vi.fn(),
   }
-  render(<MealLibraryManager {...callbacks} meals={state.meals} ingredients={[...state.ingredients, orphan]} proteinCategories={[...state.proteinCategories, unusedCategory]} />)
+  const shoppingCategories = [
+    { id: 'produce', name: 'Produce' },
+    { id: 'dairy', name: 'Dairy' },
+  ]
+  render(
+    <MealLibraryManager
+      {...callbacks}
+      meals={state.meals}
+      ingredients={[...state.ingredients, orphan]}
+      proteinCategories={[...state.proteinCategories, unusedCategory]}
+      shoppingCategories={shoppingCategories}
+    />,
+  )
   return { callbacks }
 }
 
 describe('MealLibraryManager', () => {
-  it('creates, searches, and safely deletes ingredients', async () => {
+  it('creates ingredients with the shared editor, searches, and safely deletes them', async () => {
     const { callbacks } = setup()
     const user = userEvent.setup()
 
-    await user.type(screen.getByLabelText('Name'), '  Greek yogurt  ')
-    await user.clear(screen.getByLabelText('Unit'))
-    await user.type(screen.getByLabelText('Unit'), 'cup')
-    await user.selectOptions(screen.getByLabelText('Protein'), 'chicken')
-    await user.click(screen.getByRole('button', { name: 'Add ingredient' }))
-    expect(callbacks.onCreateIngredient).toHaveBeenCalledWith({ id: 'greek-yogurt', name: 'Greek yogurt', unit: 'cup', proteinCategoryId: 'chicken' })
+    await user.click(screen.getByRole('button', { name: '+ Ingredient' }))
+    const editor = screen.getByRole('dialog', { name: 'New ingredient' })
+    await user.type(within(editor).getByLabelText('Name'), '  Greek yogurt  ')
+    await user.clear(within(editor).getByLabelText('Unit'))
+    await user.type(within(editor).getByLabelText('Unit'), 'cup')
+    await user.selectOptions(within(editor).getByLabelText('Protein'), 'chicken')
+    await user.selectOptions(within(editor).getByLabelText('Shopping category'), 'dairy')
+    await user.click(within(editor).getByRole('button', { name: 'Save ingredient' }))
+    expect(callbacks.onCreateIngredient).toHaveBeenCalledWith({
+      id: 'greek-yogurt',
+      name: 'Greek yogurt',
+      unit: 'cup',
+      proteinCategoryId: 'chicken',
+      shoppingCategoryId: 'dairy',
+    })
 
     await user.type(screen.getByLabelText('Search ingredients'), 'orphan')
     expect(screen.getByText('Orphan ingredient')).toBeInTheDocument()
@@ -38,7 +59,20 @@ describe('MealLibraryManager', () => {
     expect(callbacks.onDeleteIngredient).toHaveBeenCalledWith('orphan')
   })
 
-  it('marks used items, manages protein categories, and prevents duplicate slugs', async () => {
+  it('blocks duplicate ingredient names case-insensitively', async () => {
+    const { callbacks } = setup()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: '+ Ingredient' }))
+    const editor = screen.getByRole('dialog', { name: 'New ingredient' })
+    await user.type(within(editor).getByLabelText('Name'), ' eggs ')
+    await user.click(within(editor).getByRole('button', { name: 'Save ingredient' }))
+
+    expect(within(editor).getByRole('alert')).toHaveTextContent('already exists')
+    expect(callbacks.onCreateIngredient).not.toHaveBeenCalled()
+  })
+
+  it('marks used items and manages protein categories', async () => {
     const { callbacks } = setup()
     const user = userEvent.setup()
 

@@ -1,6 +1,6 @@
 import { seedProteinCategories, seedState } from '../data'
+import { findIngredientByName } from '../ingredients/catalog'
 import { normalizeRecipeUrl } from '../meals/recipeDetails'
-import { ensureCatalogIngredient, findIngredientByName } from '../shopping/ingredientCatalog'
 import { defaultShoppingCategories } from '../types'
 import type { AppState, Ingredient, Meal, ShoppingCategory } from '../types'
 
@@ -117,16 +117,14 @@ export function normalizeState(input: Partial<AppState> | unknown): AppState {
       shoppingCategoryId: typeof item.shoppingCategoryId === 'string' && shoppingCategoryIds.has(item.shoppingCategoryId) ? item.shoppingCategoryId : null,
     }))
 
-  function linkCatalogItem(name: string, ingredientId: string | null | undefined, categoryId: string | null | undefined) {
+  function resolveCatalogItem(name: string, ingredientId: string | null | undefined, categoryId: string | null | undefined) {
     let ingredient = ingredientId
       ? ingredients.find((item) => item.id === ingredientId)
-      : findIngredientByName(ingredients, name)
+      : undefined
 
-    if (!ingredient) {
-      const result = ensureCatalogIngredient(ingredients, name, categoryId ?? null)
-      ingredients = result.ingredients
-      ingredient = result.ingredient
-    } else if (!ingredient.shoppingCategoryId && categoryId) {
+    if (!ingredient) ingredient = findIngredientByName(ingredients, name)
+
+    if (ingredient && !ingredient.shoppingCategoryId && categoryId) {
       const categorizedIngredient = { ...ingredient, shoppingCategoryId: categoryId }
       ingredients = ingredients.map((item) => item.id === categorizedIngredient.id ? categorizedIngredient : item)
       ingredient = categorizedIngredient
@@ -135,12 +133,6 @@ export function normalizeState(input: Partial<AppState> | unknown): AppState {
     return ingredient
   }
 
-  for (const items of Object.values(rawManualShoppingItems)) {
-    for (const item of items) linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
-  }
-  for (const item of rawShoppingHistory) {
-    linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
-  }
   const legacyProteinToId: Record<string, string> = {
     Chicken: 'chicken', Beef: 'beef', Seafood: 'seafood', Pork: 'pork', None: 'none', Lamb: 'lamb',
   }
@@ -190,20 +182,20 @@ export function normalizeState(input: Partial<AppState> | unknown): AppState {
   })
   const manualShoppingItems = Object.fromEntries(
     Object.entries(rawManualShoppingItems).map(([weekKey, items]) => [weekKey, items.map((item) => {
-      const ingredient = linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+      const ingredient = resolveCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
       return {
         ...item,
-        ingredientId: ingredient.id,
-        shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+        ingredientId: ingredient?.id ?? null,
+        shoppingCategoryId: ingredient?.shoppingCategoryId ?? item.shoppingCategoryId ?? null,
       }
     })]),
   )
   const shoppingHistory = rawShoppingHistory.map((item) => {
-    const ingredient = linkCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
+    const ingredient = resolveCatalogItem(item.name, item.ingredientId, item.shoppingCategoryId)
     return {
       ...item,
-      ingredientId: ingredient.id,
-      shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+      ingredientId: ingredient?.id ?? null,
+      shoppingCategoryId: ingredient?.shoppingCategoryId ?? item.shoppingCategoryId ?? null,
     }
   })
 

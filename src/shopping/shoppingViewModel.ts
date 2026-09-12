@@ -1,3 +1,4 @@
+import { findIngredientByName } from '../ingredients/catalog'
 import type {
   Ingredient,
   ManualShoppingItem,
@@ -5,7 +6,6 @@ import type {
   ShoppingHistoryItem,
   ShoppingItem,
 } from '../types'
-import { findIngredientByName } from './ingredientCatalog'
 
 export type CombinedShoppingItem =
   | {
