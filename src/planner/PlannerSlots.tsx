@@ -7,7 +7,6 @@ import { MealProteinDots } from '../meals/mealProtein'
 export function MobilePlannerSlot({
   label,
   firstCustom,
-  hideLabel = false,
   meals,
   note,
   ingredients,
@@ -18,7 +17,6 @@ export function MobilePlannerSlot({
 }: {
   label: string
   firstCustom: boolean
-  hideLabel?: boolean
   meals: Meal[]
   note: string
   ingredients: Ingredient[]
@@ -33,11 +31,8 @@ export function MobilePlannerSlot({
   useEffect(() => setDraftNote(note), [note])
 
   return (
-    <div
-      className={`mobile-planner-slot ${firstCustom ? 'first-custom-mobile-slot' : ''}`}
-      style={hideLabel ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}
-    >
-      {!hideLabel && <div className="mobile-slot-label">{label}</div>}
+    <div className={`mobile-planner-slot ${firstCustom ? 'first-custom-mobile-slot' : ''}`}>
+      <div className="mobile-slot-label">{label}</div>
       <div className="mobile-slot-content">
         {meals.map((meal) => (
           <div className="mobile-planned-meal" key={meal.id}>
