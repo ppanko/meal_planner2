@@ -1,14 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { mealTypes } from '../data'
 import type { Ingredient, Meal, ProteinCategory } from '../types'
 import { matchSearch } from '../utils/search'
 import { formatQuantity } from '../utils/text'
 import { MealProteinDots } from './mealProtein'
 
+const mobileMealsQuery = '(max-width: 900px)'
+
+function useMobileMealsLayout() {
+  const getMatches = () => typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(mobileMealsQuery).matches
+  const [isMobile, setIsMobile] = useState(getMatches)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const mediaQuery = window.matchMedia(mobileMealsQuery)
+    const handleChange = (event: MediaQueryListEvent) => setIsMobile(event.matches)
+    setIsMobile(mediaQuery.matches)
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [])
+
+  return isMobile
+}
+
 export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartCooking, onEdit, onDelete, onDuplicate, proteinCategories }: {
   meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onManageLibrary: () => void; onStartCooking: (m: Meal) => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onDuplicate: (m: Meal) => void; proteinCategories: ProteinCategory[]
 }) {
   const [search, setSearch] = useState('')
+  const [mobileMealType, setMobileMealType] = useState<Meal['type']>(mealTypes[0] ?? 'Breakfast')
+  const isMobile = useMobileMealsLayout()
   const hasSearch = search.trim().length > 0
   const visibleMeals = meals.filter((meal) => {
     const ingredientNames = meal.ingredients
@@ -16,6 +39,9 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
       .filter(Boolean)
     return matchSearch([meal.name, ...ingredientNames].join(' '), search)
   })
+  const mobileMeals = visibleMeals
+    .filter((meal) => meal.type === mobileMealType)
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <section>
@@ -28,7 +54,56 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
         <input className="meal-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search meals or ingredients…" aria-label="Search meals" />
         {search && <button className="meal-search-clear" type="button" onClick={() => setSearch('')} aria-label="Clear meal search">×</button>}
       </div>
-      {hasSearch && visibleMeals.length === 0 ? (
+
+      {isMobile ? (
+        <div>
+          <div
+            className="protein-filter mobile-meal-tabs"
+            role="tablist"
+            aria-label="Meal type"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 14 }}
+          >
+            {mealTypes.map((type) => {
+              const selected = type === mobileMealType
+              const tabId = `mobile-meals-tab-${type.toLowerCase()}`
+
+              return (
+                <button
+                  key={type}
+                  id={tabId}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls="mobile-meals-panel"
+                  tabIndex={selected ? 0 : -1}
+                  className={selected ? 'active' : ''}
+                  style={{ justifyContent: 'center', padding: '8px 10px' }}
+                  onClick={() => setMobileMealType(type)}
+                >
+                  {type}
+                </button>
+              )
+            })}
+          </div>
+
+          <div
+            id="mobile-meals-panel"
+            className="meal-library-full"
+            role="tabpanel"
+            aria-labelledby={`mobile-meals-tab-${mobileMealType.toLowerCase()}`}
+          >
+            <div className="meal-library-section">
+              {mobileMeals.length > 0 ? (
+                mobileMeals.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)
+              ) : (
+                <div className="meal-browser-empty">
+                  {hasSearch ? `No ${mobileMealType.toLowerCase()} meals match “${search.trim()}”.` : `No ${mobileMealType.toLowerCase()} meals yet.`}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : hasSearch && visibleMeals.length === 0 ? (
         <div className="meal-browser-empty">No meals match “{search.trim()}”.</div>
       ) : (
         <div className="meal-library-full">
