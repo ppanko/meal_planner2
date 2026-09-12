@@ -88,6 +88,36 @@ describe('planner slot components', () => {
     expect(within(slot).queryByPlaceholderText('Add a note…')).not.toBeInTheDocument()
   })
 
+  it('opens meal ingredients from a mobile planned meal without changing remove behavior', async () => {
+    const user = userEvent.setup()
+    const onRemoveMeal = vi.fn()
+    render(
+      <MobilePlannerSlot
+        label="Breakfast"
+        firstCustom={false}
+        meals={[meal]}
+        note=""
+        ingredients={state.ingredients}
+        proteinCategories={seedProteinCategories}
+        onAdd={vi.fn()}
+        onRemoveMeal={onRemoveMeal}
+        onNoteChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: `View ${meal.name} ingredients` }))
+    const dialog = screen.getByRole('dialog', { name: `${meal.name} meal details` })
+    expect(within(dialog).getByText('1.5 cup Flour')).toBeInTheDocument()
+    expect(within(dialog).getByText('2 each Eggs')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close meal details' }))
+    expect(screen.queryByRole('dialog', { name: `${meal.name} meal details` })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '×' }))
+    expect(onRemoveMeal).toHaveBeenCalledWith(meal.id)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('hides the mobile add action at three meals', () => {
     render(
       <MobilePlannerSlot
@@ -131,5 +161,26 @@ describe('planner slot components', () => {
     await user.type(textarea, 'New desktop note')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onNoteChange).toHaveBeenCalledWith('New desktop note')
+  })
+
+  it('opens meal ingredients from a desktop planned meal', async () => {
+    const user = userEvent.setup()
+    render(
+      <PlannerSlot
+        day="2026-08-17"
+        rowId="Breakfast"
+        meals={[meal]}
+        note=""
+        onNoteChange={vi.fn()}
+        onRemoveMeal={vi.fn()}
+        ingredients={state.ingredients}
+        proteinCategories={seedProteinCategories}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: `View ${meal.name} ingredients` }))
+    const dialog = screen.getByRole('dialog', { name: `${meal.name} meal details` })
+    expect(within(dialog).getByText('1.5 cup Flour')).toBeInTheDocument()
+    expect(within(dialog).getByText('1 cup Milk')).toBeInTheDocument()
   })
 })
