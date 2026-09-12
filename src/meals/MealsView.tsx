@@ -9,6 +9,7 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
   meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onManageLibrary: () => void; onStartCooking: (m: Meal) => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onDuplicate: (m: Meal) => void; proteinCategories: ProteinCategory[]
 }) {
   const [search, setSearch] = useState('')
+  const hasSearch = search.trim().length > 0
   const visibleMeals = meals.filter((meal) => {
     const ingredientNames = meal.ingredients
       .map((item) => ingredients.find((ingredient) => ingredient.id === item.ingredientId)?.name ?? '')
@@ -27,12 +28,17 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
         <input className="meal-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search meals or ingredients…" aria-label="Search meals" />
         {search && <button className="meal-search-clear" type="button" onClick={() => setSearch('')} aria-label="Clear meal search">×</button>}
       </div>
-      <div className="meal-library-full">
-        {mealTypes.map((type) => {
-          const group = visibleMeals.filter((meal) => meal.type === type).sort((a, b) => a.name.localeCompare(b.name))
-          return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)}</div>
-        })}
-      </div>
+      {hasSearch && visibleMeals.length === 0 ? (
+        <div className="meal-browser-empty">No meals match “{search.trim()}”.</div>
+      ) : (
+        <div className="meal-library-full">
+          {mealTypes.map((type) => {
+            const group = visibleMeals.filter((meal) => meal.type === type).sort((a, b) => a.name.localeCompare(b.name))
+            if (hasSearch && group.length === 0) return null
+            return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)}</div>
+          })}
+        </div>
+      )}
     </section>
   )
 }
