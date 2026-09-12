@@ -51,4 +51,46 @@ describe('MealsView', () => {
     expect(onEdit).toHaveBeenCalledWith(meal)
     expect(onDelete).toHaveBeenCalledWith(state.meals[0].id)
   })
+
+  it('alphabetizes meals within each type and ingredients within each meal card', () => {
+    const state = createAppState()
+    const ingredients = [
+      { id: 'zucchini', name: 'Zucchini', unit: 'each', proteinCategoryId: null },
+      { id: 'apple', name: 'Apple', unit: 'each', proteinCategoryId: null },
+    ]
+    const baseMeal = state.meals[0]
+    const zetaMeal = {
+      ...baseMeal,
+      id: 'zeta',
+      name: 'Zeta Bowl',
+      ingredients: [
+        { ingredientId: 'zucchini', quantity: 1 },
+        { ingredientId: 'apple', quantity: 2 },
+      ],
+    }
+    const alphaMeal = { ...baseMeal, id: 'alpha', name: 'Alpha Bowl', ingredients: [] }
+
+    const { container } = render(
+      <MealsView
+        meals={[zetaMeal, alphaMeal]}
+        ingredients={ingredients}
+        proteinCategories={seedProteinCategories}
+        onNew={vi.fn()}
+        onManageLibrary={vi.fn()}
+        onStartCooking={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+
+    expect(Array.from(container.querySelectorAll('.meal-detail-card h3'), (heading) => heading.textContent)).toEqual([
+      'Alpha Bowl',
+      'Zeta Bowl',
+    ])
+    expect(Array.from(container.querySelectorAll('.meal-detail-card ul li'), (item) => item.textContent)).toEqual([
+      '2 each Apple',
+      '1 each Zucchini',
+    ])
+  })
 })

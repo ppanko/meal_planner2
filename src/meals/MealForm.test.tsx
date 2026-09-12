@@ -51,6 +51,38 @@ describe('MealForm', () => {
     }, undefined)
   })
 
+  it('alphabetizes ingredient and protein choices without mutating source order', async () => {
+    const ingredients = [
+      { id: 'zucchini', name: 'Zucchini', unit: 'each', proteinCategoryId: null },
+      { id: 'apple', name: 'Apple', unit: 'each', proteinCategoryId: null },
+      { id: 'banana', name: 'Banana', unit: 'each', proteinCategoryId: null },
+    ]
+    const proteinCategories = [
+      { id: 'turkey', name: 'Turkey', color: '#999999' },
+      { id: 'beef', name: 'Beef', color: '#777777' },
+      { id: 'chicken', name: 'Chicken', color: '#555555' },
+    ]
+    const callbacks = props({ ingredients, proteinCategories })
+    const user = userEvent.setup()
+    render(<MealForm {...callbacks} />)
+
+    await user.click(screen.getByRole('button', { name: '+ Add ingredient' }))
+
+    const ingredientSelect = screen.getByLabelText('Ingredient 1') as HTMLSelectElement
+    expect(Array.from(ingredientSelect.options, (option) => option.text)).toEqual(['Apple', 'Banana', 'Zucchini'])
+    expect(ingredientSelect).toHaveValue('apple')
+
+    const proteinSelect = screen.getByLabelText('Protein') as HTMLSelectElement
+    expect(Array.from(proteinSelect.options, (option) => option.text)).toEqual([
+      'Auto from ingredients',
+      'Beef',
+      'Chicken',
+      'Turkey',
+    ])
+    expect(ingredients.map(({ name }) => name)).toEqual(['Zucchini', 'Apple', 'Banana'])
+    expect(proteinCategories.map(({ name }) => name)).toEqual(['Turkey', 'Beef', 'Chicken'])
+  })
+
   it('edits existing details and passes the original id on save', async () => {
     const meal = {
       ...state.meals[0],

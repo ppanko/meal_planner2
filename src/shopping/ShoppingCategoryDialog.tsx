@@ -16,6 +16,7 @@ export function ShoppingCategoryDialog({ categories, items, search, onClose, onS
   onDeleteCategory: (categoryId: string) => void
 }) {
   const [newCategoryName, setNewCategoryName] = useState('')
+  const alphabeticalCategories = [...categories].sort((a, b) => a.name.localeCompare(b.name))
 
   function submitCategory(event: FormEvent) {
     event.preventDefault()
@@ -60,7 +61,7 @@ export function ShoppingCategoryDialog({ categories, items, search, onClose, onS
                 <span>{item.name}</span>
                 <select value={item.categoryId ?? ''} onChange={(event) => onSetItemCategory(item.ingredientId, item.manualIds, event.target.value || null)} aria-label={`Shopping category for ${item.name}`}>
                   <option value="">Uncategorized</option>
-                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  {alphabeticalCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                 </select>
               </label>
             )) : <div className="ingredient-manager-empty">No items match your search.</div>}

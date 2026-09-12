@@ -33,6 +33,32 @@ describe('CookingView', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('alphabetizes the ingredient checklist while preserving cooking-step order', () => {
+    const state = createAppState()
+    const ingredients = [
+      { id: 'zucchini', name: 'Zucchini', unit: 'each', proteinCategoryId: null },
+      { id: 'apple', name: 'Apple', unit: 'each', proteinCategoryId: null },
+    ]
+    const meal = {
+      ...state.meals[0],
+      ingredients: [
+        { ingredientId: 'zucchini', quantity: 1 },
+        { ingredientId: 'apple', quantity: 2 },
+      ],
+      instructions: ['Second alphabetically', 'First alphabetically'],
+    }
+    const { container } = render(<CookingView meal={meal} ingredients={ingredients} onClose={vi.fn()} />)
+
+    expect(Array.from(container.querySelectorAll('.cooking-checklist label'), (item) => item.textContent?.trim())).toEqual([
+      '2 each Apple',
+      '1 each Zucchini',
+    ])
+    expect(Array.from(container.querySelectorAll('.cooking-steps li'), (item) => item.textContent?.replace(/^\d+/, '').trim())).toEqual([
+      'Second alphabetically',
+      'First alphabetically',
+    ])
+  })
+
   it('handles recipes without steps and never renders unsafe source links', () => {
     const state = createAppState()
     const onClose = vi.fn()

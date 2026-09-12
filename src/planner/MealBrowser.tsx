@@ -8,10 +8,12 @@ export function ProteinFilters({ categories, value, onChange, className = '' }: 
   onChange: (value: string | 'All') => void
   className?: string
 }) {
+  const sortedCategories = [...categories].sort((a, b) => a.name.localeCompare(b.name))
+
   return (
     <div className={`protein-filter ${className}`.trim()} aria-label="Filter meals by protein">
       <button type="button" className={value === 'All' ? 'active' : ''} onClick={() => onChange('All')}>All</button>
-      {categories.map((category) => (
+      {sortedCategories.map((category) => (
         <button key={category.id} type="button" className={value === category.id ? 'active' : ''} onClick={() => onChange(category.id)}>
           <ProteinDot category={category} />{category.name}
         </button>
