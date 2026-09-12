@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import AuthGate from './AuthGate'
 import './styles.css'
+import './mobile-focus.css'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
