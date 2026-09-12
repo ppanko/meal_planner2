@@ -14,7 +14,7 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
       </div>
       <div className="meal-library-full">
         {mealTypes.map((type) => {
-          const group = meals.filter((m) => m.type === type)
+          const group = meals.filter((m) => m.type === type).slice().sort((a, b) => a.name.localeCompare(b.name))
           return <div key={type} className="meal-library-section"><h3>{type}</h3>{group.map((meal) => <MealEditorCard key={meal.id} meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} onStartCooking={() => onStartCooking(meal)} onEdit={() => onEdit(meal)} onDelete={() => onDelete(meal.id)} onDuplicate={() => onDuplicate(meal)} />)}</div>
         })}
       </div>
@@ -23,13 +23,19 @@ export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartC
 }
 
 function MealEditorCard({ meal, ingredients, proteinCategories, onStartCooking, onEdit, onDelete, onDuplicate }: { meal: Meal; ingredients: Ingredient[]; proteinCategories: ProteinCategory[]; onStartCooking: () => void; onEdit: () => void; onDelete: () => void; onDuplicate: () => void }) {
+  const sortedMealIngredients = [...meal.ingredients].sort((a, b) => {
+    const aName = ingredients.find((ingredient) => ingredient.id === a.ingredientId)?.name ?? ''
+    const bName = ingredients.find((ingredient) => ingredient.id === b.ingredientId)?.name ?? ''
+    return aName.localeCompare(bName)
+  })
+
   return (
     <article className="meal-detail-card">
       <div className="meal-detail-top">
         <h3><MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />{meal.name}</h3>
         <span className="pill">{meal.type}</span>
       </div>
-      <ul>{meal.ingredients.map((mi, index) => { const ing = ingredients.find((i) => i.id === mi.ingredientId); return ing ? <li key={`${mi.ingredientId}-${index}`}>{formatQuantity(mi.quantity)} {ing.unit} {ing.name}</li> : null })}</ul>
+      <ul>{sortedMealIngredients.map((mi, index) => { const ing = ingredients.find((i) => i.id === mi.ingredientId); return ing ? <li key={`${mi.ingredientId}-${index}`}>{formatQuantity(mi.quantity)} {ing.unit} {ing.name}</li> : null })}</ul>
       {Boolean(meal.recipeUrl || meal.notes || meal.instructions?.length) && <div className="recipe-summary"><span>{meal.instructions?.length ?? 0} {(meal.instructions?.length ?? 0) === 1 ? 'step' : 'steps'}</span>{meal.recipeUrl && <span>Recipe link</span>}{meal.notes && <span>Notes</span>}</div>}
       <div className="card-actions"><button className="start-cooking-button" onClick={onStartCooking}>Start cooking</button><button onClick={onEdit}>Edit</button><button onClick={onDuplicate}>Duplicate</button><button className="danger-text" onClick={onDelete}>Delete</button></div>
     </article>
