@@ -54,11 +54,16 @@ export function PlannerView({
   const [newRowLabel, setNewRowLabel] = useState('')
   const [showRowEditor, setShowRowEditor] = useState(false)
   const [mobilePickerSlot, setMobilePickerSlot] = useState<MobilePickerSlot | null>(null)
+  const [mobileMealTab, setMobileMealTab] = useState(defaultPlannerRows[0]?.id ?? 'Breakfast')
   const visibleWeekKey = `${dateKey(weekDates[0])}:${dateKey(weekDates[weekDates.length - 1])}`
   const [mobileCollapsedDays, setMobileCollapsedDays] = useState<Set<string>>(
     () => getDefaultMobileCollapsedDays(weekDates, weekOffset),
   )
   const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
+  const mobileRows = [
+    ...defaultPlannerRows.filter((row) => row.id === mobileMealTab),
+    ...customRows,
+  ]
 
   const filteredMeals = useMemo(
     () => filterMeals(state.meals, state.ingredients, proteinCategories, mealSearch, proteinFilter),
@@ -195,7 +200,41 @@ export function PlannerView({
       </div>
 
       <div className="mobile-planner">
-        <div className="mobile-planner-days">
+        <div
+          className="protein-filter mobile-meal-tabs"
+          role="tablist"
+          aria-label="Meal type"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 14 }}
+        >
+          {defaultPlannerRows.map((row) => {
+            const selected = row.id === mobileMealTab
+            const tabId = `mobile-meal-tab-${row.id.toLowerCase()}`
+
+            return (
+              <button
+                key={row.id}
+                id={tabId}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls="mobile-planner-days"
+                tabIndex={selected ? 0 : -1}
+                className={selected ? 'active' : ''}
+                style={{ justifyContent: 'center', padding: '8px 10px' }}
+                onClick={() => setMobileMealTab(row.id)}
+              >
+                {row.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          className="mobile-planner-days"
+          id="mobile-planner-days"
+          role="tabpanel"
+          aria-labelledby={`mobile-meal-tab-${mobileMealTab.toLowerCase()}`}
+        >
           {weekDates.map((date, dayIndex) => {
             const dayKeyValue = dateKey(date)
             const isCollapsed = mobileCollapsedDays.has(dayKeyValue)
@@ -218,7 +257,7 @@ export function PlannerView({
                   </button>
                 </div>
 
-                {!isCollapsed && getPlannerRows(state, weekDates).map((row, rowIndex) => {
+                {!isCollapsed && mobileRows.map((row) => {
                   const mealIds = getSlotMealIds(state.planner, dayKeyValue, row.id)
                   const meals = mealIds
                     .map((mealId) => state.meals.find((meal) => meal.id === mealId))
@@ -229,7 +268,8 @@ export function PlannerView({
                     <MobilePlannerSlot
                       key={`${dayKeyValue}-${row.id}`}
                       label={row.label}
-                      firstCustom={isCustom && rowIndex === defaultPlannerRows.length}
+                      hideLabel={!isCustom}
+                      firstCustom={isCustom && row.id === customRows[0]?.id}
                       meals={meals}
                       note={state.plannerNotes[dayKeyValue]?.[row.id] ?? ''}
                       ingredients={state.ingredients}
