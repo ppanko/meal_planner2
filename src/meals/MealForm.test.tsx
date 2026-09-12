@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { seedProteinCategories } from '../data'
@@ -31,7 +31,9 @@ describe('MealForm', () => {
     await user.type(screen.getByLabelText('Name'), '  Brunch Bowl  ')
     await user.selectOptions(screen.getByLabelText('Type'), 'Lunch')
     await user.click(screen.getByRole('button', { name: '+ Add ingredient' }))
-    await user.selectOptions(screen.getByLabelText('Ingredient 1'), 'milk')
+    const ingredientSearch = screen.getByLabelText('Ingredient 1')
+    await user.type(ingredientSearch, 'milk')
+    await user.click(screen.getByRole('option', { name: /milk/i }))
     await user.type(screen.getByLabelText('Recipe URL'), 'example.com/brunch')
     await user.type(screen.getByLabelText('Notes'), '  Use oat milk.  ')
     await user.click(screen.getByRole('button', { name: '+ Add step' }))
@@ -68,9 +70,14 @@ describe('MealForm', () => {
 
     await user.click(screen.getByRole('button', { name: '+ Add ingredient' }))
 
-    const ingredientSelect = screen.getByLabelText('Ingredient 1') as HTMLSelectElement
-    expect(Array.from(ingredientSelect.options, (option) => option.text)).toEqual(['Apple', 'Banana', 'Zucchini'])
-    expect(ingredientSelect).toHaveValue('apple')
+    const ingredientSearch = screen.getByRole('combobox', { name: 'Ingredient 1' })
+    const ingredientList = screen.getByRole('listbox')
+    expect(within(ingredientList).getAllByRole('option').map((option) => option.getAttribute('aria-label'))).toEqual([
+      'Apple',
+      'Banana',
+      'Zucchini',
+    ])
+    expect(ingredientSearch).toHaveValue('')
 
     const proteinSelect = screen.getByLabelText('Protein') as HTMLSelectElement
     expect(Array.from(proteinSelect.options, (option) => option.text)).toEqual([
@@ -127,6 +134,7 @@ describe('MealForm', () => {
     render(<MealForm {...callbacks} />)
     await user.type(screen.getByLabelText('Name'), 'Unsafe meal')
     await user.click(screen.getByRole('button', { name: '+ Add ingredient' }))
+    await user.keyboard('{Enter}')
     await user.type(screen.getByLabelText('Recipe URL'), 'javascript:alert(1)')
     await user.click(screen.getByRole('button', { name: 'Save meal' }))
     expect(screen.getByRole('alert')).toHaveTextContent('valid http or https')

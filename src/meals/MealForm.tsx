@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { mealTypes } from '../data'
 import type { Ingredient, Meal, MealType, ProteinCategory } from '../types'
+import { IngredientCombobox } from './IngredientCombobox'
+import './IngredientCombobox.css'
 import { ProteinDot } from './mealProtein'
 import { normalizeRecipeUrl } from './recipeDetails'
 import { useEscapeKey } from './useEscapeKey'
@@ -20,16 +22,16 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
   const [type, setType] = useState<MealType>(meal?.type ?? 'Dinner')
   const [proteinCategoryOverrideId, setProteinCategoryOverrideId] = useState(meal?.proteinCategoryOverrideId ?? '')
   const [rows, setRows] = useState(meal?.ingredients.map((item) => ({ ...item })) ?? [])
+  const [focusRowIndex, setFocusRowIndex] = useState<number | null>(null)
   const [recipeUrl, setRecipeUrl] = useState(meal?.recipeUrl ?? '')
   const [notes, setNotes] = useState(meal?.notes ?? '')
   const [instructions, setInstructions] = useState([...(meal?.instructions ?? [])])
   const [error, setError] = useState('')
-  const sortedIngredients = [...ingredients].sort((a, b) => a.name.localeCompare(b.name))
   const sortedProteinCategories = [...proteinCategories].sort((a, b) => a.name.localeCompare(b.name))
 
   function addRow() {
-    const first = sortedIngredients[0]
-    if (first) setRows([...rows, { ingredientId: first.id, quantity: 1 }])
+    setFocusRowIndex(rows.length)
+    setRows([...rows, { ingredientId: '', quantity: 1 }])
   }
 
   function save() {
@@ -39,6 +41,10 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
     }
     if (rows.length === 0) {
       setError('Add at least one ingredient.')
+      return
+    }
+    if (rows.some((row) => !row.ingredientId)) {
+      setError('Choose an ingredient for each row.')
       return
     }
 
@@ -87,8 +93,18 @@ export function MealForm({ meal, ingredients, proteinCategories, duplicateMode =
             {rows.map((row, index) => {
               const ingredient = ingredients.find((item) => item.id === row.ingredientId)
               const category = proteinCategories.find((item) => item.id === ingredient?.proteinCategoryId)
-              return <div className="ingredient-row" key={`${row.ingredientId}-${index}`}>
-                <select aria-label={`Ingredient ${index + 1}`} value={row.ingredientId} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, ingredientId: event.target.value } : item))}>{sortedIngredients.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
+              return <div className="ingredient-row" key={index}>
+                <IngredientCombobox
+                  label={`Ingredient ${index + 1}`}
+                  ingredients={ingredients}
+                  value={row.ingredientId}
+                  autoFocus={focusRowIndex === index}
+                  onChange={(ingredientId) => {
+                    setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, ingredientId } : item))
+                    if (ingredientId) setFocusRowIndex(null)
+                    setError('')
+                  }}
+                />
                 <input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.25" value={row.quantity} onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Number(event.target.value) } : item))} />
                 <span>{ingredient?.unit ?? ''}</span>
                 <span className="ingredient-protein-indicator">{category ? <><ProteinDot category={category} />{category.name}</> : '—'}</span>
