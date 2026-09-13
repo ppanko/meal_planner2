@@ -115,6 +115,8 @@ function App() {
               shopping={shopping.shopping}
               manualItems={shopping.manualShopping}
               onToggle={shopping.toggleShopping}
+              onAddIngredient={shopping.addIngredientToShopping}
+              onCreateIngredientAndAdd={shopping.createIngredientAndAddToShopping}
               onAddManual={shopping.addManualShoppingItem}
               onToggleManual={shopping.toggleManualShoppingItem}
               onDeleteManual={shopping.deleteManualShoppingItem}
@@ -126,6 +128,7 @@ function App() {
               weekOffset={weekOffset}
               setWeekOffset={setWeekOffset}
               ingredients={state.ingredients}
+              proteinCategories={state.proteinCategories}
               shoppingCategories={shopping.orderedShoppingCategories}
               onSetItemCategory={shopping.setShoppingItemCategory}
               onAddShoppingCategory={shopping.addShoppingCategory}
