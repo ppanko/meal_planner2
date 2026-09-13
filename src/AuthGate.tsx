@@ -28,32 +28,40 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [submitting, setSubmitting] = useState(false)
   const mounted = useRef(false)
   const verificationRequest = useRef(0)
+  const verifiedUserId = useRef<string | null>(null)
 
   async function refresh(nextSession: Session | null) {
     if (!mounted.current) return
 
     const requestId = ++verificationRequest.current
+    const keepCurrentView = Boolean(
+      nextSession && verifiedUserId.current === nextSession.user.id,
+    )
+
     setSession(nextSession)
     setVerificationError(false)
 
     if (!nextSession) {
+      verifiedUserId.current = null
       setEnrolled(false)
       setChecking(false)
       return
     }
 
-    setChecking(true)
+    if (!keepCurrentView) setChecking(true)
     const isEnrolled = await checkEnrollment(nextSession)
 
     if (!mounted.current || requestId !== verificationRequest.current) return
 
     if (isEnrolled === null) {
+      verifiedUserId.current = null
       setEnrolled(false)
       setChecking(false)
       setVerificationError(true)
       return
     }
 
+    verifiedUserId.current = isEnrolled ? nextSession.user.id : null
     setEnrolled(isEnrolled)
     setChecking(false)
   }
@@ -121,6 +129,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
 
     verificationRequest.current += 1
+    verifiedUserId.current = activeSession.user.id
     setAccessCode('')
     setVerificationError(false)
     setChecking(false)
