@@ -3,14 +3,14 @@ import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseConfigured } from './supabase'
 
-async function checkEnrollment(session: Session | null): Promise<boolean> {
+async function checkEnrollment(session: Session | null): Promise<boolean | null> {
   if (!session) return false
 
   const { data, error } = await supabase.rpc('is_meal_planner_authorized')
 
   if (error) {
     console.warn('Could not check meal-planner enrollment.', error)
-    return false
+    return null
   }
 
   return data === true
@@ -30,7 +30,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     async function refresh(nextSession: Session | null) {
       const isEnrolled = await checkEnrollment(nextSession)
 
-      if (!mounted) return
+      if (!mounted || isEnrolled === null) return
       setSession(nextSession)
       setEnrolled(isEnrolled)
       setChecking(false)
