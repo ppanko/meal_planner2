@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -83,13 +83,21 @@ describe('AuthGate', () => {
 
   it('does not prompt for a household code when enrollment verification fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    let resolveEnrollment!: (value: { data: null; error: Error }) => void
+    const enrollmentResult = new Promise<{ data: null; error: Error }>((resolve) => {
+      resolveEnrollment = resolve
+    })
+
     mocks.getSession.mockResolvedValue({ data: { session } })
-    mocks.rpc.mockResolvedValue({ data: null, error: new Error('network') })
+    mocks.rpc.mockReturnValue(enrollmentResult)
     render(<AuthGate><div>Private app</div></AuthGate>)
 
-    await waitFor(() => {
-      expect(warn).toHaveBeenCalledWith('Could not check meal-planner enrollment.', expect.any(Error))
+    await act(async () => {
+      resolveEnrollment({ data: null, error: new Error('network') })
+      await enrollmentResult
     })
+
+    expect(warn).toHaveBeenCalledWith('Could not check meal-planner enrollment.', expect.any(Error))
     expect(screen.getByText('Opening Meal Planner…')).toBeInTheDocument()
     expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
   })
