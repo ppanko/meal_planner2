@@ -63,6 +63,7 @@ export function PlannerView({
   )
   const [showPastMobileDays, setShowPastMobileDays] = useState(false)
   const pastMobileDays = getPastMobileDays(weekDates, weekOffset)
+  const hiddenPastMobileDays = pastMobileDays.filter((day) => mobileCollapsedDays.has(day))
   const customRows = state.plannerRowsByWeek[dateKey(weekDates[0])] ?? []
 
   const filteredMeals = useMemo(
@@ -91,6 +92,17 @@ export function PlannerView({
       const nextCollapsedDays = new Set(collapsedDays)
       if (nextCollapsedDays.has(day)) nextCollapsedDays.delete(day)
       else nextCollapsedDays.add(day)
+      return nextCollapsedDays
+    })
+  }
+
+  function showPreviousMobileDay() {
+    setMobileCollapsedDays((collapsedDays) => {
+      const nextDay = [...pastMobileDays].reverse().find((day) => collapsedDays.has(day))
+      if (!nextDay) return collapsedDays
+
+      const nextCollapsedDays = new Set(collapsedDays)
+      nextCollapsedDays.delete(nextDay)
       return nextCollapsedDays
     })
   }
@@ -203,16 +215,29 @@ export function PlannerView({
       <div className="mobile-planner">
         <div className="mobile-planner-days">
           {pastMobileDays.length > 0 && (
-            <button
-              type="button"
-              className="mobile-past-days-toggle"
-              onClick={() => setShowPastMobileDays((show) => !show)}
-              aria-label={`${showPastMobileDays ? 'Hide' : 'Show'} ${pastMobileDays.length} past days`}
-              aria-expanded={showPastMobileDays}
-            >
-              <span aria-hidden="true">{showPastMobileDays ? '⌃' : '⌄'}</span>
-              <strong>Past days · {pastMobileDays.length}</strong>
-            </button>
+            <>
+              <button
+                type="button"
+                className="mobile-past-days-toggle"
+                onClick={() => setShowPastMobileDays((show) => !show)}
+                aria-label={`${showPastMobileDays ? 'Hide' : 'Show'} ${pastMobileDays.length} past days`}
+                aria-expanded={showPastMobileDays}
+              >
+                <strong>Past days · {pastMobileDays.length}</strong>
+                <span aria-hidden="true">{showPastMobileDays ? '⌃' : '⌄'}</span>
+              </button>
+              {showPastMobileDays && hiddenPastMobileDays.length > 0 && (
+                <div className="mobile-past-days-actions">
+                  <button
+                    type="button"
+                    className="mobile-past-days-reveal"
+                    onClick={showPreviousMobileDay}
+                  >
+                    Show previous day
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {weekDates.map((date, dayIndex) => {
@@ -221,7 +246,7 @@ export function PlannerView({
             const isPastDay = pastMobileDays.includes(dayKeyValue)
             const dayName = dayLong[dayIndex]
 
-            if (isPastDay && isCollapsed && !showPastMobileDays) return null
+            if (isPastDay && isCollapsed) return null
 
             return (
               <section className="mobile-day-card" key={dayKeyValue}>
