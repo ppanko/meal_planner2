@@ -1,0 +1,39 @@
+.library-item > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.library-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.library-item-actions .secondary {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.library-item-actions .danger-text {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 500px) {
+  .library-item-actions {
+    gap: 5px;
+  }
+
+  .library-item-actions .secondary {
+    padding: 5px 6px;
+  }
+}
