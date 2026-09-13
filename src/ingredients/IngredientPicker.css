@@ -5,8 +5,20 @@
 
 .ingredient-combobox > input {
   width: 100%;
-  margin: 0;
   min-width: 0;
+  min-height: 40px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: #2d2a25;
+  padding: 9px 11px;
+  outline: none;
+}
+
+.ingredient-combobox > input:focus {
+  border-color: #a9b8aa;
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .ingredient-combobox-options {
