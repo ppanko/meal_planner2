@@ -62,7 +62,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     mounted.current = true
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void refresh(nextSession)
+      setTimeout(() => {
+        void refresh(nextSession)
+      }, 0)
     })
 
     return () => {
