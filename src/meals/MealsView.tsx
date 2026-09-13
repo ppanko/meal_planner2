@@ -111,8 +111,8 @@ function ProteinFilterControls({
   )
 }
 
-export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManageLibrary, onStartCooking, onEdit, onDelete, onDuplicate, proteinCategories }: {
-  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onNewIngredient?: () => void; onManageLibrary: () => void; onStartCooking: (m: Meal) => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onDuplicate: (m: Meal) => void; proteinCategories: ProteinCategory[]
+export function MealsView({ meals, ingredients, onNew, onManageLibrary, onStartCooking, onEdit, onDelete, onDuplicate, proteinCategories }: {
+  meals: Meal[]; ingredients: Ingredient[]; onNew: () => void; onManageLibrary: () => void; onStartCooking: (m: Meal) => void; onEdit: (m: Meal) => void; onDelete: (id: string) => void; onDuplicate: (m: Meal) => void; proteinCategories: ProteinCategory[]
 }) {
   const [search, setSearch] = useState('')
   const [proteinFilter, setProteinFilter] = useState<ProteinFilterValue>('All')
@@ -164,16 +164,6 @@ export function MealsView({ meals, ingredients, onNew, onNewIngredient, onManage
           >
             {isMobile ? 'Manage' : 'Manage library'}
           </button>
-          {onNewIngredient && (
-            <button
-              className="secondary"
-              onClick={onNewIngredient}
-              aria-label="+ Ingredient"
-              style={isMobile ? { padding: '7px 9px', fontSize: 11, background: 'transparent' } : undefined}
-            >
-              {isMobile ? '+ Ing.' : '+ Ingredient'}
-            </button>
-          )}
           <button
             className="primary"
             onClick={onNew}
