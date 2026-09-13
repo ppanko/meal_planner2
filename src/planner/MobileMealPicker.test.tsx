@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -82,7 +82,7 @@ describe('MobileMealPicker', () => {
   })
 
   it('keeps picker overrides order-independent and gives the disclosure a 44px touch target', () => {
-    const styles = readFileSync(fileURLToPath(new URL('./MobileMealPicker.css', import.meta.url)), 'utf8')
+    const styles = readFileSync(path.resolve(process.cwd(), 'src/planner/MobileMealPicker.css'), 'utf8')
     const addRule = styles.match(/\.mobile-picker-meal\.mobile-picker-meal-add\s*\{([^}]*)\}/s)?.[1] ?? ''
     const disclosureRule = styles.match(/\.mobile-picker-ingredients-toggle\s*\{([^}]*)\}/s)?.[1] ?? ''
 
