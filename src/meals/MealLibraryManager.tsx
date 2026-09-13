@@ -5,6 +5,7 @@ import { sortBySearch } from '../utils/search'
 import { slug } from '../utils/text'
 import { ProteinDot } from './mealProtein'
 import { useEscapeKey } from './useEscapeKey'
+import './MealLibraryManager.css'
 
 type MealLibraryManagerProps = {
   meals: Meal[]
