@@ -54,7 +54,7 @@
   }
 
   .mobile-planner .mobile-day-header,
-  .mobile-planner .day-header {
+  .day-header {
     background: #343a40;
     color: #fff;
     border-bottom-color: #343a40;
@@ -62,8 +62,8 @@
 
   .mobile-planner .mobile-day-header span,
   .mobile-planner .mobile-day-header strong,
-  .mobile-planner .day-header b,
-  .mobile-planner .day-header span {
+  .day-header b,
+  .day-header span {
     color: #fff;
   }
 }
