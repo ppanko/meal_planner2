@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -77,5 +79,13 @@ describe('MobileMealPicker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add Pancakes' }))
     expect(onChoose).toHaveBeenCalledWith(expect.objectContaining({ id: 'pancakes' }))
+  })
+
+  it('keeps the ingredient disclosure styling in the global mobile stylesheet with a 44px touch target', () => {
+    const styles = readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8')
+    const rule = styles.match(/\.mobile-picker-ingredients-toggle\s*\{([^}]*)\}/s)?.[1] ?? ''
+
+    expect(rule).toMatch(/min-width:\s*44px/)
+    expect(rule).toMatch(/min-height:\s*44px/)
   })
 })
