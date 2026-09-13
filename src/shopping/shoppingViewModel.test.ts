@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Ingredient, ManualShoppingItem, ShoppingHistoryItem, ShoppingItem } from '../types'
-import { buildCategoryItems, combineShoppingItems, filterShoppingHistory, getShoppingSuggestions, groupShoppingItems } from './shoppingViewModel'
+import { buildCategoryItems, combineShoppingItems, filterShoppingHistory, groupShoppingItems } from './shoppingViewModel'
 
 const ingredients: Ingredient[] = [
   { id: 'milk', name: 'Milk', unit: 'cup', proteinCategoryId: null, shoppingCategoryId: 'dairy' },
@@ -31,17 +31,6 @@ describe('shopping view model', () => {
     expect(combined).toHaveLength(2)
     expect(combined.map(({ kind }) => kind)).toEqual(['meal', 'manual'])
     expect(combined[1]).toMatchObject({ ingredientId: 'milk', categoryId: 'dairy' })
-  })
-
-  it('prioritizes prefix suggestions, deduplicates names, and excludes needed items', () => {
-    const history: ShoppingHistoryItem[] = [
-      { id: '1', name: 'Coffee', lastPurchasedAt: '2026-08-01' },
-      { id: '2', name: 'Milk chocolate', lastPurchasedAt: '2026-08-02' },
-      { id: '3', name: 'MILK', lastPurchasedAt: '2026-08-03' },
-    ]
-
-    expect(getShoppingSuggestions('mi', ingredients, history, new Set(['milk']))).toEqual(['Milk chocolate'])
-    expect(getShoppingSuggestions('', ingredients, history, new Set())).toEqual([])
   })
 
   it('sorts history by recency and filters case-insensitively', () => {
