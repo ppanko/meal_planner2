@@ -1,51 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseConfigured } from './supabase'
 
+const ENROLLMENT_CHECK_ATTEMPTS = 3
+
 async function checkEnrollment(session: Session | null): Promise<boolean | null> {
   if (!session) return false
 
-  const { data, error } = await supabase.rpc('is_meal_planner_authorized')
+  for (let attempt = 0; attempt < ENROLLMENT_CHECK_ATTEMPTS; attempt += 1) {
+    const { data, error } = await supabase.rpc('is_meal_planner_authorized')
 
-  if (error) {
+    if (!error) return data === true
     console.warn('Could not check meal-planner enrollment.', error)
-    return null
   }
 
-  return data === true
+  return null
 }
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [enrolled, setEnrolled] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [verificationError, setVerificationError] = useState(false)
   const [accessCode, setAccessCode] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const mounted = useRef(false)
+  const verificationRequest = useRef(0)
 
-  useEffect(() => {
-    let mounted = true
+  async function refresh(nextSession: Session | null) {
+    if (!mounted.current) return
 
-    async function refresh(nextSession: Session | null) {
-      const isEnrolled = await checkEnrollment(nextSession)
+    const requestId = ++verificationRequest.current
+    setSession(nextSession)
+    setVerificationError(false)
 
-      if (!mounted || isEnrolled === null) return
-      setSession(nextSession)
-      setEnrolled(isEnrolled)
+    if (!nextSession) {
+      setEnrolled(false)
       setChecking(false)
+      return
     }
 
-    void supabase.auth.getSession().then(({ data }) => {
-      void refresh(data.session)
-    })
+    setChecking(true)
+    const isEnrolled = await checkEnrollment(nextSession)
+
+    if (!mounted.current || requestId !== verificationRequest.current) return
+
+    if (isEnrolled === null) {
+      setEnrolled(false)
+      setChecking(false)
+      setVerificationError(true)
+      return
+    }
+
+    setEnrolled(isEnrolled)
+    setChecking(false)
+  }
+
+  useEffect(() => {
+    mounted.current = true
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       void refresh(nextSession)
     })
 
     return () => {
-      mounted = false
+      mounted.current = false
+      verificationRequest.current += 1
       listener.subscription.unsubscribe()
     }
   }, [])
@@ -96,8 +118,17 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return
     }
 
+    verificationRequest.current += 1
     setAccessCode('')
+    setVerificationError(false)
+    setChecking(false)
+    setSession(activeSession)
     setEnrolled(true)
+  }
+
+  function retryVerification() {
+    if (!session || checking) return
+    void refresh(session)
   }
 
   if (!supabaseConfigured) {
@@ -119,6 +150,22 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="loading-screen">
         <div className="loading-card">Opening Meal Planner…</div>
+      </div>
+    )
+  }
+
+  if (verificationError) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="eyebrow">CONNECTION</div>
+          <h1>Meal Planner</h1>
+          <p>Could not verify this device.</p>
+          <button className="primary auth-submit" type="button" onClick={retryVerification}>
+            Try again
+          </button>
+          <p className="auth-footnote">Check your connection and try again.</p>
+        </div>
       </div>
     )
   }
