@@ -25,12 +25,20 @@ vi.mock('./supabase', () => ({
 import AuthGate from './AuthGate'
 
 const session = { user: { id: 'user-1' } }
+let authStateCallback: ((event: string, nextSession: typeof session | null) => void) | null = null
+
+function emitAuth(event: string, nextSession: typeof session | null) {
+  if (!authStateCallback) throw new Error('Auth listener was not registered')
+  act(() => authStateCallback?.(event, nextSession))
+}
 
 beforeEach(() => {
+  authStateCallback = null
   mocks.unsubscribe.mockReset()
-  mocks.getSession.mockReset().mockResolvedValue({ data: { session: null } })
-  mocks.onAuthStateChange.mockReset().mockReturnValue({
-    data: { subscription: { unsubscribe: mocks.unsubscribe } },
+  mocks.getSession.mockReset().mockResolvedValue({ data: { session: null }, error: null })
+  mocks.onAuthStateChange.mockReset().mockImplementation((callback) => {
+    authStateCallback = callback
+    return { data: { subscription: { unsubscribe: mocks.unsubscribe } } }
   })
   mocks.signInAnonymously.mockReset().mockResolvedValue({ data: { session }, error: null })
   mocks.rpc.mockReset().mockImplementation((name) => {
@@ -40,13 +48,15 @@ beforeEach(() => {
 })
 
 describe('AuthGate', () => {
-  it('renders children for an enrolled session and unsubscribes on cleanup', async () => {
-    mocks.getSession.mockResolvedValue({ data: { session } })
+  it('bootstraps from the auth listener and renders children for an enrolled session', async () => {
     mocks.rpc.mockResolvedValue({ data: true, error: null })
 
     const { unmount } = render(<AuthGate><div>Private app</div></AuthGate>)
     expect(screen.getByText('Opening Meal Planner…')).toBeInTheDocument()
+
+    emitAuth('INITIAL_SESSION', session)
     expect(await screen.findByText('Private app')).toBeInTheDocument()
+    expect(mocks.getSession).not.toHaveBeenCalled()
 
     unmount()
     expect(mocks.unsubscribe).toHaveBeenCalled()
@@ -55,6 +65,7 @@ describe('AuthGate', () => {
   it('enrolls a new anonymous device with the entered household code', async () => {
     const user = userEvent.setup()
     render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', null)
 
     const input = await screen.findByLabelText('Household code')
     await user.type(input, '  secret-code  ')
@@ -74,6 +85,7 @@ describe('AuthGate', () => {
     }))
     const user = userEvent.setup()
     render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', null)
 
     await user.type(await screen.findByLabelText('Household code'), 'wrong')
     await user.click(screen.getByRole('button', { name: 'Connect this device' }))
@@ -88,6 +100,7 @@ describe('AuthGate', () => {
     })
     const user = userEvent.setup()
     render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', null)
 
     await user.type(await screen.findByLabelText('Household code'), 'secret')
     await user.click(screen.getByRole('button', { name: 'Connect this device' }))
@@ -95,24 +108,64 @@ describe('AuthGate', () => {
     expect(mocks.rpc).not.toHaveBeenCalledWith('enroll_meal_planner_device', expect.anything())
   })
 
-  it('does not prompt for a household code when enrollment verification fails', async () => {
+  it('shows a recoverable verification error after bounded enrollment retries', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    let resolveEnrollment!: (value: { data: null; error: Error }) => void
-    const enrollmentResult = new Promise<{ data: null; error: Error }>((resolve) => {
-      resolveEnrollment = resolve
-    })
+    mocks.rpc.mockResolvedValue({ data: null, error: new Error('network') })
 
-    mocks.getSession.mockResolvedValue({ data: { session } })
-    mocks.rpc.mockReturnValue(enrollmentResult)
     render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', session)
+
+    expect(await screen.findByText('Could not verify this device.')).toBeInTheDocument()
+    expect(mocks.rpc).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalled()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    expect(screen.queryByText('Opening Meal Planner…')).not.toBeInTheDocument()
+  })
+
+  it('can retry verification without asking for the household code again', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mocks.rpc.mockResolvedValue({ data: null, error: new Error('network') })
+    const user = userEvent.setup()
+
+    render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', session)
+    await screen.findByText('Could not verify this device.')
+
+    mocks.rpc.mockResolvedValue({ data: true, error: null })
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByText('Private app')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('ignores an older enrollment result after a newer auth event wins', async () => {
+    let resolveOlder!: (value: { data: boolean; error: null }) => void
+    let resolveNewer!: (value: { data: boolean; error: null }) => void
+    const older = new Promise<{ data: boolean; error: null }>((resolve) => { resolveOlder = resolve })
+    const newer = new Promise<{ data: boolean; error: null }>((resolve) => { resolveNewer = resolve })
+
+    mocks.rpc
+      .mockReturnValueOnce(older)
+      .mockReturnValueOnce(newer)
+
+    render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', session)
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(1))
+
+    emitAuth('TOKEN_REFRESHED', session)
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(2))
 
     await act(async () => {
-      resolveEnrollment({ data: null, error: new Error('network') })
-      await enrollmentResult
+      resolveNewer({ data: true, error: null })
+      await newer
     })
+    expect(await screen.findByText('Private app')).toBeInTheDocument()
 
-    expect(warn).toHaveBeenCalledWith('Could not check meal-planner enrollment.', expect.any(Error))
-    expect(screen.getByText('Opening Meal Planner…')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    await act(async () => {
+      resolveOlder({ data: false, error: null })
+      await older
+    })
+    expect(screen.getByText('Private app')).toBeInTheDocument()
   })
 })
