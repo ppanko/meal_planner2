@@ -68,16 +68,16 @@ describe('useShoppingController ingredient entry', () => {
     ])
   })
 
-  it('keeps an explicitly manual shopping item out of the ingredient catalog', () => {
+  it('keeps an unknown one-off shopping item out of the ingredient catalog', () => {
     const state = createAppState()
     const { result, update } = setup(state)
 
-    act(() => result.current.addManualShoppingItem('Milk'))
+    act(() => result.current.addManualShoppingItem('Paper towels'))
 
     const next = update.mock.calls[0][0] as AppState
     expect(next.manualShoppingItems['2026-08-17']).toEqual([
       expect.objectContaining({
-        name: 'Milk',
+        name: 'Paper towels',
         ingredientId: null,
         shoppingCategoryId: null,
       }),
