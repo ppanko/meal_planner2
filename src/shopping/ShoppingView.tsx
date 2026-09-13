@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { IngredientEditor } from '../ingredients/IngredientEditor'
+import { IngredientPicker } from '../ingredients/IngredientPicker'
 import type { Ingredient, ManualShoppingItem, ProteinCategory, ShoppingCategory, ShoppingHistoryItem, ShoppingItem } from '../types'
 import { formatRange } from '../utils/dates'
-import { ShoppingAddCombobox } from './ShoppingAddCombobox'
 import { ShoppingCategoryDialog } from './ShoppingCategoryDialog'
 import { ShoppingHistory } from './ShoppingHistory'
 import { ShoppingList } from './ShoppingList'
@@ -75,12 +75,22 @@ export function ShoppingView(props: ShoppingViewProps) {
       </div>
       <div className="shopping-layout">
         <div className="shopping-current">
-          <ShoppingAddCombobox
-            ingredients={props.ingredients}
-            onSelectIngredient={props.onAddIngredient}
-            onAddManual={props.onAddManual}
-            onCreate={setCreatingIngredientName}
-          />
+          <div className="shopping-add-shell shopping-ingredient-entry">
+            <IngredientPicker
+              label="Add shopping list item"
+              ingredients={props.ingredients}
+              value=""
+              onChange={(ingredientId) => {
+                if (ingredientId) props.onAddIngredient(ingredientId)
+              }}
+              onCreate={setCreatingIngredientName}
+              createLabel={(name) => `Create “${name}” as ingredient…`}
+              secondaryAction={{
+                label: (name) => `Add “${name}” to shopping list`,
+                onSelect: props.onAddManual,
+              }}
+            />
+          </div>
           {!hasItems ? (
             <div className="empty-state"><h3>Shopping list is empty</h3><p>Add an item above, reuse a past item, or plan meals for this week.</p></div>
           ) : (
@@ -110,8 +120,8 @@ export function ShoppingView(props: ShoppingViewProps) {
           onSearchChange={setItemSearch}
           onSetItemCategory={props.onSetItemCategory}
           onAddCategory={props.onAddShoppingCategory}
-          onMoveCategory={props.onMoveShoppingCategory}
-          onDeleteCategory={props.onDeleteShoppingCategory}
+          onMoveShoppingCategory={props.onMoveShoppingCategory}
+          onDeleteShoppingCategory={props.onDeleteShoppingCategory}
         />
       )}
     </section>
