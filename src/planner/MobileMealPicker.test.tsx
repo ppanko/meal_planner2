@@ -81,11 +81,14 @@ describe('MobileMealPicker', () => {
     expect(onChoose).toHaveBeenCalledWith(expect.objectContaining({ id: 'pancakes' }))
   })
 
-  it('keeps the ingredient disclosure styling in the global mobile stylesheet with a 44px touch target', () => {
-    const styles = readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8')
-    const rule = styles.match(/\.mobile-picker-ingredients-toggle\s*\{([^}]*)\}/s)?.[1] ?? ''
+  it('keeps picker overrides order-independent and gives the disclosure a 44px touch target', () => {
+    const styles = readFileSync(fileURLToPath(new URL('./MobileMealPicker.css', import.meta.url)), 'utf8')
+    const addRule = styles.match(/\.mobile-picker-meal\.mobile-picker-meal-add\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const disclosureRule = styles.match(/\.mobile-picker-ingredients-toggle\s*\{([^}]*)\}/s)?.[1] ?? ''
 
-    expect(rule).toMatch(/min-width:\s*44px/)
-    expect(rule).toMatch(/min-height:\s*44px/)
+    expect(addRule).toMatch(/border-bottom:\s*0/)
+    expect(disclosureRule).toMatch(/flex:\s*0\s+0\s+44px/)
+    expect(disclosureRule).toMatch(/min-width:\s*44px/)
+    expect(disclosureRule).toMatch(/min-height:\s*44px/)
   })
 })
