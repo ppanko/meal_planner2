@@ -120,8 +120,8 @@ export function ShoppingView(props: ShoppingViewProps) {
           onSearchChange={setItemSearch}
           onSetItemCategory={props.onSetItemCategory}
           onAddCategory={props.onAddShoppingCategory}
-          onMoveShoppingCategory={props.onMoveShoppingCategory}
-          onDeleteShoppingCategory={props.onDeleteShoppingCategory}
+          onMoveCategory={props.onMoveShoppingCategory}
+          onDeleteCategory={props.onDeleteShoppingCategory}
         />
       )}
     </section>
