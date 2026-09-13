@@ -81,6 +81,32 @@ describe('AuthGate', () => {
     expect(rpcCalledInsideCallback).toBe(false)
   })
 
+  it('keeps the authorized app visible while a refreshed session is verified', async () => {
+    let resolveRefresh!: (value: { data: boolean; error: null }) => void
+    const refreshResult = new Promise<{ data: boolean; error: null }>((resolve) => {
+      resolveRefresh = resolve
+    })
+
+    mocks.rpc.mockResolvedValueOnce({ data: true, error: null })
+
+    render(<AuthGate><div>Private app</div></AuthGate>)
+    emitAuth('INITIAL_SESSION', session)
+    expect(await screen.findByText('Private app')).toBeInTheDocument()
+
+    mocks.rpc.mockReturnValueOnce(refreshResult)
+    emitAuth('TOKEN_REFRESHED', session)
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(2))
+
+    expect(screen.getByText('Private app')).toBeInTheDocument()
+    expect(screen.queryByText('Opening Meal Planner…')).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveRefresh({ data: true, error: null })
+      await refreshResult
+    })
+    expect(screen.getByText('Private app')).toBeInTheDocument()
+  })
+
   it('enrolls a new anonymous device with the entered household code', async () => {
     const user = userEvent.setup()
     render(<AuthGate><div>Private app</div></AuthGate>)
