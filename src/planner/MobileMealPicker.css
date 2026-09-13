@@ -8,7 +8,7 @@
     align-items: stretch;
   }
 
-  .mobile-picker-meal-add {
+  .mobile-picker-meal.mobile-picker-meal-add {
     width: auto;
     flex: 1 1 auto;
     min-width: 0;
@@ -16,7 +16,9 @@
   }
 
   .mobile-picker-ingredients-toggle {
-    flex: 0 0 38px;
+    flex: 0 0 44px;
+    min-width: 44px;
+    min-height: 44px;
     border: 0;
     background: transparent;
     color: var(--muted);
@@ -34,7 +36,7 @@
   }
 
   .mobile-picker-ingredients {
-    padding: 0 38px 10px 21px;
+    padding: 0 44px 10px 21px;
     color: var(--muted);
   }
 
