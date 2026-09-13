@@ -81,27 +81,16 @@ describe('AuthGate', () => {
     expect(screen.queryByText('Private app')).not.toBeInTheDocument()
   })
 
-  it('shows anonymous sign-in errors without attempting enrollment', async () => {
-    mocks.signInAnonymously.mockResolvedValue({
-      data: { session: null },
-      error: { message: 'Anonymous sign-in disabled' },
-    })
-    const user = userEvent.setup()
-    render(<AuthGate><div>Private app</div></AuthGate>)
-
-    await user.type(await screen.findByLabelText('Household code'), 'secret')
-    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
-    expect(await screen.findByText('Anonymous sign-in disabled')).toBeInTheDocument()
-    expect(mocks.rpc).not.toHaveBeenCalledWith('enroll_meal_planner_device', expect.anything())
-  })
-
-  it('keeps the gate closed when enrollment checks fail', async () => {
+  it('does not prompt for a household code when enrollment verification fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     mocks.getSession.mockResolvedValue({ data: { session } })
     mocks.rpc.mockResolvedValue({ data: null, error: new Error('network') })
     render(<AuthGate><div>Private app</div></AuthGate>)
 
-    expect(await screen.findByLabelText('Household code')).toBeInTheDocument()
-    expect(warn).toHaveBeenCalledWith('Could not check meal-planner enrollment.', expect.any(Error))
+    await waitFor(() => {
+      expect(warn).toHaveBeenCalledWith('Could not check meal-planner enrollment.', expect.any(Error))
+    })
+    expect(screen.getByText('Opening Meal Planner…')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
   })
 })
