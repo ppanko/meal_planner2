@@ -6,10 +6,10 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid #cfd5da;
     border-radius: 10px;
-    background: transparent;
-    color: var(--muted);
+    background: #eef1f3;
+    color: #343a40;
     padding: 5px 10px;
     font-size: 10px;
     font-weight: 800;
@@ -18,7 +18,7 @@
   }
 
   .mobile-past-days-toggle:hover {
-    background: #faf8f4;
+    background: #e3e7ea;
   }
 
   .mobile-past-days-toggle > span {
@@ -26,8 +26,44 @@
     line-height: 1;
   }
 
-  .mobile-past-days-toggle:focus-visible {
+  .mobile-past-days-toggle:focus-visible,
+  .mobile-past-days-reveal:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  .mobile-past-days-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: -2px;
+  }
+
+  .mobile-past-days-reveal {
+    border: 0;
+    background: transparent;
+    color: #495057;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .mobile-past-days-reveal:hover {
+    color: #343a40;
+  }
+
+  .mobile-planner .mobile-day-header,
+  .day-header {
+    background: #343a40;
+    color: #fff;
+    border-bottom-color: #343a40;
+  }
+
+  .mobile-planner .mobile-day-header span,
+  .mobile-planner .mobile-day-header strong,
+  .day-header b,
+  .day-header span {
+    color: #fff;
   }
 }
