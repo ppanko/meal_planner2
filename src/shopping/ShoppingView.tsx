@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
-import type { Ingredient, ManualShoppingItem, ShoppingCategory, ShoppingHistoryItem, ShoppingItem } from '../types'
+import { IngredientEditor } from '../ingredients/IngredientEditor'
+import type { Ingredient, ManualShoppingItem, ProteinCategory, ShoppingCategory, ShoppingHistoryItem, ShoppingItem } from '../types'
 import { formatRange } from '../utils/dates'
 import { ShoppingAddCombobox } from './ShoppingAddCombobox'
 import { ShoppingCategoryDialog } from './ShoppingCategoryDialog'
 import { ShoppingHistory } from './ShoppingHistory'
 import { ShoppingList } from './ShoppingList'
-import { buildCategoryItems, combineShoppingItems, filterShoppingHistory, getShoppingSuggestions } from './shoppingViewModel'
+import { buildCategoryItems, combineShoppingItems, filterShoppingHistory } from './shoppingViewModel'
 
 export type ShoppingViewProps = {
   shopping: ShoppingItem[]
   manualItems: ManualShoppingItem[]
   onToggle: (lineId: string) => void
+  onAddIngredient: (ingredientId: string) => void
+  onCreateIngredientAndAdd: (ingredient: Ingredient) => void
   onAddManual: (name: string) => void
   onToggleManual: (id: string) => void
   onDeleteManual: (id: string) => void
@@ -22,6 +25,7 @@ export type ShoppingViewProps = {
   weekOffset: number
   setWeekOffset: (n: number) => void
   ingredients: Ingredient[]
+  proteinCategories: ProteinCategory[]
   shoppingCategories: ShoppingCategory[]
   onSetItemCategory: (ingredientId: string | null, manualIds: string[], categoryId: string | null) => void
   onAddShoppingCategory: (name: string) => void
@@ -30,10 +34,10 @@ export type ShoppingViewProps = {
 }
 
 export function ShoppingView(props: ShoppingViewProps) {
-  const [newItem, setNewItem] = useState('')
   const [historySearch, setHistorySearch] = useState('')
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [itemSearch, setItemSearch] = useState('')
+  const [creatingIngredientName, setCreatingIngredientName] = useState<string | null>(null)
 
   const items = useMemo(
     () => combineShoppingItems(props.shopping, props.manualItems, props.ingredients),
@@ -49,10 +53,6 @@ export function ShoppingView(props: ShoppingViewProps) {
     [props.manualItems],
   )
   const filteredHistory = useMemo(() => filterShoppingHistory(props.history, historySearch), [props.history, historySearch])
-  const suggestions = useMemo(
-    () => getShoppingSuggestions(newItem, props.ingredients, props.history, manualNeededNames),
-    [newItem, props.ingredients, props.history, manualNeededNames],
-  )
   const categoryItems = useMemo(
     () => buildCategoryItems(props.ingredients, props.manualItems, itemSearch),
     [props.ingredients, props.manualItems, itemSearch],
@@ -60,7 +60,7 @@ export function ShoppingView(props: ShoppingViewProps) {
   const hasItems = items.length > 0
   const hasChecked = items.some((item) => item.checked)
 
-  return (
+  return <>
     <section>
       <div className="section-header shopping-section-header">
         <div><div className="eyebrow">SHOPPING</div><h2>{formatRange(props.weekDates)}</h2></div>
@@ -75,7 +75,12 @@ export function ShoppingView(props: ShoppingViewProps) {
       </div>
       <div className="shopping-layout">
         <div className="shopping-current">
-          <ShoppingAddCombobox suggestions={suggestions} value={newItem} onChange={setNewItem} onSubmit={props.onAddManual} />
+          <ShoppingAddCombobox
+            ingredients={props.ingredients}
+            onSelectIngredient={props.onAddIngredient}
+            onAddManual={props.onAddManual}
+            onCreate={setCreatingIngredientName}
+          />
           {!hasItems ? (
             <div className="empty-state"><h3>Shopping list is empty</h3><p>Add an item above, reuse a past item, or plan meals for this week.</p></div>
           ) : (
@@ -110,5 +115,19 @@ export function ShoppingView(props: ShoppingViewProps) {
         />
       )}
     </section>
-  )
+
+    {creatingIngredientName !== null && (
+      <IngredientEditor
+        ingredients={props.ingredients}
+        proteinCategories={props.proteinCategories}
+        shoppingCategories={props.shoppingCategories}
+        initialName={creatingIngredientName}
+        onCancel={() => setCreatingIngredientName(null)}
+        onSave={(ingredient) => {
+          props.onCreateIngredientAndAdd(ingredient)
+          setCreatingIngredientName(null)
+        }}
+      />
+    )}
+  </>
 }
