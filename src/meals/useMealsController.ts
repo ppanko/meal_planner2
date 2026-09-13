@@ -112,6 +112,16 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     update({ ...state, ingredients: [...state.ingredients, ingredient] })
   }
 
+  function updateIngredient(ingredient: Ingredient) {
+    if (!state || !state.ingredients.some((item) => item.id === ingredient.id)) return
+    const duplicate = findIngredientByName(state.ingredients, ingredient.name)
+    if (duplicate && duplicate.id !== ingredient.id) return
+    update({
+      ...state,
+      ingredients: state.ingredients.map((item) => item.id === ingredient.id ? ingredient : item),
+    })
+  }
+
   function deleteIngredient(ingredientId: string) {
     if (!state) return
 
@@ -183,6 +193,7 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     duplicateMeal,
     deleteMeal,
     createIngredient,
+    updateIngredient,
     deleteIngredient,
     createProteinCategory,
     deleteProteinCategory,
