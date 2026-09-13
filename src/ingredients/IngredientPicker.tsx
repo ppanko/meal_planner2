@@ -150,7 +150,7 @@ export function IngredientPicker({
           onChange('')
         }}
         onKeyDown={handleKeyDown}
-        onBlur={() => window.setTimeout(() => setOpen(false), 100)}
+        onBlur={() => setOpen(false)}
       />
       {open && (
         <div className="ingredient-combobox-options" id={listboxId} role="listbox">
