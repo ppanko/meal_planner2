@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createAppState, weekDates } from '../test/fixtures'
@@ -26,6 +26,8 @@ function props() {
     shopping,
     manualItems,
     onToggle: vi.fn(),
+    onAddIngredient: vi.fn(),
+    onCreateIngredientAndAdd: vi.fn(),
     onAddManual: vi.fn(),
     onToggleManual: vi.fn(),
     onDeleteManual: vi.fn(),
@@ -39,6 +41,7 @@ function props() {
     weekOffset: 1,
     setWeekOffset: vi.fn(),
     ingredients: state.ingredients,
+    proteinCategories: state.proteinCategories,
     shoppingCategories: [
       { id: 'produce', name: 'Produce' },
       { id: 'dairy', name: 'Dairy' },
@@ -88,27 +91,20 @@ describe('ShoppingView', () => {
     expect(callbacks.onClearChecked).toHaveBeenCalled()
   })
 
-  it('adds manual items, navigates weeks, and reuses history', async () => {
+  it('adds ingredients and one-off items, navigates weeks, and reuses history', async () => {
     const callbacks = props()
     const user = userEvent.setup()
     render(<ShoppingView {...callbacks} />)
 
     const addInput = screen.getByLabelText('Add shopping list item')
     expect(addInput).toHaveAttribute('role', 'combobox')
-    await user.type(addInput, 'mi')
-    expect(screen.getByRole('listbox', { name: 'Suggested shopping items' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /Milk/ })).toBeInTheDocument()
-    await user.keyboard('{ArrowDown}{Enter}')
-    expect(addInput).toHaveValue('Milk')
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    await user.keyboard('{Enter}')
-    expect(callbacks.onAddManual).toHaveBeenCalledWith('Milk')
 
-    await user.type(addInput, 'egg')
-    expect(screen.getByRole('option', { name: /Eggs/ })).toBeInTheDocument()
-    await user.clear(addInput)
-    await user.type(addInput, '  Apples  ')
-    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.type(addInput, 'mi')
+    await user.click(screen.getByRole('option', { name: 'Milk' }))
+    expect(callbacks.onAddIngredient).toHaveBeenCalledWith('milk')
+
+    await user.type(addInput, 'Apples')
+    await user.click(screen.getByRole('option', { name: 'Add “Apples” to shopping list' }))
     expect(callbacks.onAddManual).toHaveBeenCalledWith('Apples')
     expect(addInput).toHaveValue('')
 
@@ -169,27 +165,18 @@ describe('ShoppingView', () => {
       .toHaveTextContent('Added separately')
   })
 
-  it('supports pointer selection, reverse keyboard navigation, and dismissal', async () => {
+  it('uses the shared picker keyboard selection and dismissal behavior', async () => {
     const callbacks = props()
     const user = userEvent.setup()
     render(<ShoppingView {...callbacks} />)
     const addInput = screen.getByRole('combobox', { name: 'Add shopping list item' })
 
-    await user.type(addInput, 'cof')
-    const coffee = screen.getByRole('option', { name: /Coffee/ })
-    fireEvent.pointerMove(coffee)
-    fireEvent.pointerDown(coffee)
-    expect(addInput).toHaveValue('Coffee')
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await user.type(addInput, 'milk')
+    await user.keyboard('{Enter}')
+    expect(callbacks.onAddIngredient).toHaveBeenCalledWith('milk')
 
-    await user.clear(addInput)
-    await user.type(addInput, 'chi')
-    await user.keyboard('{ArrowUp}{Enter}')
-    expect(addInput).toHaveValue('Chicken')
-
-    await user.clear(addInput)
     await user.type(addInput, 'bro')
-    expect(screen.getByRole('option', { name: /Broccoli/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Broccoli' })).toBeInTheDocument()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })

@@ -16,7 +16,6 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
   const [showMealForm, setShowMealForm] = useState(false)
   const [duplicateMode, setDuplicateMode] = useState(false)
   const [showLibraryManager, setShowLibraryManager] = useState(false)
-  const [showIngredientEditor, setShowIngredientEditor] = useState(false)
   const [cookingMeal, setCookingMeal] = useState<Meal | null>(null)
 
   function openNewMeal() {
@@ -24,7 +23,6 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     setEditingMeal(null)
     setShowMealForm(true)
     setShowLibraryManager(false)
-    setShowIngredientEditor(false)
     setCookingMeal(null)
   }
 
@@ -33,14 +31,12 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     setEditingMeal(meal)
     setShowMealForm(true)
     setShowLibraryManager(false)
-    setShowIngredientEditor(false)
     setCookingMeal(null)
   }
 
   function openLibraryManager() {
     closeMealForm()
     setCookingMeal(null)
-    setShowIngredientEditor(false)
     setShowLibraryManager(true)
   }
 
@@ -48,22 +44,9 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     setShowLibraryManager(false)
   }
 
-  function openIngredientEditor() {
-    closeMealForm()
-    setShowLibraryManager(false)
-    setCookingMeal(null)
-    setShowIngredientEditor(true)
-    setView('meals')
-  }
-
-  function closeIngredientEditor() {
-    setShowIngredientEditor(false)
-  }
-
   function startCooking(meal: Meal) {
     closeMealForm()
     setShowLibraryManager(false)
-    setShowIngredientEditor(false)
     setCookingMeal(meal)
   }
 
@@ -99,7 +82,6 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     setEditingMeal(duplicate)
     setShowMealForm(true)
     setShowLibraryManager(false)
-    setShowIngredientEditor(false)
     setCookingMeal(null)
     setView('meals')
   }
@@ -189,15 +171,12 @@ export function useMealsController({ state, setView, update, updateWithUndo }: M
     showMealForm,
     duplicateMode,
     showLibraryManager,
-    showIngredientEditor,
     cookingMeal,
     openNewMeal,
     openEditMeal,
     closeMealForm,
     openLibraryManager,
     closeLibraryManager,
-    openIngredientEditor,
-    closeIngredientEditor,
     startCooking,
     closeCooking,
     saveMeal,

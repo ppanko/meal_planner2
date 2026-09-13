@@ -112,40 +112,6 @@ export function filterShoppingHistory(history: ShoppingHistoryItem[], search: st
     })
 }
 
-export function getShoppingSuggestions(
-  query: string,
-  ingredients: Ingredient[],
-  history: ShoppingHistoryItem[],
-  neededNames: Set<string>,
-) {
-  const normalizedQuery = query.trim().toLowerCase()
-  if (!normalizedQuery) return []
-
-  const names = new Map<string, string>()
-  for (const name of [
-    ...ingredients.map((ingredient) => ingredient.name),
-    ...history.map((item) => item.name),
-  ]) {
-    const trimmed = name.trim()
-    if (trimmed && !names.has(trimmed.toLowerCase())) names.set(trimmed.toLowerCase(), trimmed)
-  }
-
-  return [...names.values()]
-    .filter((name) => {
-      const normalized = name.toLowerCase()
-      return normalized !== normalizedQuery &&
-        normalized.includes(normalizedQuery) &&
-        !neededNames.has(normalized)
-    })
-    .sort((a, b) => {
-      const aStarts = a.toLowerCase().startsWith(normalizedQuery)
-      const bStarts = b.toLowerCase().startsWith(normalizedQuery)
-      if (aStarts !== bStarts) return aStarts ? -1 : 1
-      return a.localeCompare(b)
-    })
-    .slice(0, 6)
-}
-
 export function buildCategoryItems(
   ingredients: Ingredient[],
   manualItems: ManualShoppingItem[],
