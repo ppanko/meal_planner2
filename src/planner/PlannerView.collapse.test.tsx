@@ -41,35 +41,46 @@ function renderPlanner(dates = weekDates, weekOffset = 0) {
 describe('mobile planner day collapse', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('collapses passed days by default in the current week', () => {
+  it('groups passed days behind one summary in the current week', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 20, 12))
 
     renderPlanner()
 
-    expect(screen.getByRole('button', { name: 'Expand Monday' })).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByRole('button', { name: 'Expand Tuesday' })).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByRole('button', { name: 'Expand Wednesday' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: 'Show 3 past days' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Monday' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Tuesday' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Wednesday' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Collapse Thursday' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(4)
   })
 
-  it('lets users expand and collapse a day', () => {
+  it('reveals past-day headers and keeps an expanded past day visible when the group is hidden', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 20, 12))
 
     renderPlanner()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 3 past days' }))
+    expect(screen.getByRole('button', { name: 'Expand Monday' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand Tuesday' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand Wednesday' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand Monday' }))
     expect(screen.getByRole('button', { name: 'Collapse Monday' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(5)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Hide 3 past days' }))
+    expect(screen.getByRole('button', { name: 'Collapse Monday' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Tuesday' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Wednesday' })).not.toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Monday' }))
-    expect(screen.getByRole('button', { name: 'Expand Monday' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Expand Monday' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(4)
   })
 
-  it('keeps non-current weeks expanded', () => {
+  it('keeps non-current weeks expanded without a past-days summary', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 20, 12))
     const previousWeekDates = weekDates.map((date) => {
@@ -80,11 +91,12 @@ describe('mobile planner day collapse', () => {
 
     renderPlanner(previousWeekDates, -1)
 
+    expect(screen.queryByRole('button', { name: /past days/i })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(7)
     expect(screen.getByRole('button', { name: 'Collapse Monday' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('reapplies current-week defaults after navigating away and back', () => {
+  it('reapplies the grouped current-week defaults after navigating away and back', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 20, 12))
     const previousWeekDates = weekDates.map((date) => {
@@ -104,6 +116,7 @@ describe('mobile planner day collapse', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show 3 past days' }))
     fireEvent.click(screen.getByRole('button', { name: 'Expand Monday' }))
     expect(screen.getByRole('button', { name: 'Collapse Monday' })).toBeInTheDocument()
 
@@ -126,7 +139,8 @@ describe('mobile planner day collapse', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Expand Monday' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: 'Show 3 past days' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Monday' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(4)
   })
 })
