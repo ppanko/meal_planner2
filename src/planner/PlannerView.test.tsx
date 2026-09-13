@@ -124,7 +124,7 @@ describe('PlannerView', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })[0])
     const dialog = screen.getByRole('dialog')
-    await user.click(within(dialog).getByRole('button', { name: /Pancakes/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add Pancakes' }))
     expect(actions.addMealToSlot).toHaveBeenCalledWith(
       '2026-08-17',
       'Breakfast',
