@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createAppState, weekDates } from '../test/fixtures'
@@ -77,9 +77,9 @@ describe('ShoppingView unified ingredient entry', () => {
     await user.type(input, 'Shallot')
     await user.click(screen.getByRole('option', { name: 'Create “Shallot” as ingredient…' }))
 
-    const editor = screen.getByRole('dialog', { name: 'New ingredient' })
+    const editor = await screen.findByRole('dialog', { name: 'New ingredient' })
     expect(within(editor).getByLabelText('Name')).toHaveValue('Shallot')
-    fireEvent.change(within(editor).getByLabelText('Shopping category'), { target: { value: 'produce' } })
+    await user.selectOptions(within(editor).getByLabelText('Shopping category'), 'produce')
     await user.click(within(editor).getByRole('button', { name: 'Save ingredient' }))
 
     expect(callbacks.onCreateIngredientAndAdd).toHaveBeenCalledWith(expect.objectContaining({
