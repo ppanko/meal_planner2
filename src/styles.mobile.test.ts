@@ -19,7 +19,7 @@ describe('mobile planner styling', () => {
       /\.mobile-past-days-toggle\s*\{[^}]*background:\s*#eef1f3;[^}]*color:\s*#343a40;/s,
     )
     expect(plannerMobileCss).toMatch(
-      /\.mobile-planner \.mobile-day-header,\s*\.mobile-planner \.day-header\s*\{[^}]*background:\s*#343a40;[^}]*color:\s*#fff;[^}]*border-bottom-color:\s*#343a40;/s,
+      /\.mobile-planner \.mobile-day-header,\s*\.day-header\s*\{[^}]*background:\s*#343a40;[^}]*color:\s*#fff;[^}]*border-bottom-color:\s*#343a40;/s,
     )
   })
 })
