@@ -11,6 +11,7 @@ function setup() {
   const callbacks = {
     onClose: vi.fn(),
     onCreateIngredient: vi.fn(),
+    onUpdateIngredient: vi.fn(),
     onDeleteIngredient: vi.fn(),
     onCreateProteinCategory: vi.fn(),
     onDeleteProteinCategory: vi.fn(),
@@ -57,6 +58,33 @@ describe('MealLibraryManager', () => {
     expect(screen.queryByText('Eggs')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Delete Orphan ingredient' }))
     expect(callbacks.onDeleteIngredient).toHaveBeenCalledWith('orphan')
+  })
+
+  it('edits an existing ingredient without changing its id', async () => {
+    const { callbacks } = setup()
+    const user = userEvent.setup()
+    const eggsRow = screen.getByText('Eggs').closest('.library-item') as HTMLElement
+
+    await user.click(within(eggsRow).getByRole('button', { name: 'Edit Eggs' }))
+    const editor = screen.getByRole('dialog', { name: 'Edit ingredient' })
+    expect(within(editor).getByLabelText('Name')).toHaveValue('Eggs')
+    expect(within(editor).getByLabelText('Unit')).toHaveValue('each')
+
+    await user.clear(within(editor).getByLabelText('Name'))
+    await user.type(within(editor).getByLabelText('Name'), 'Large eggs')
+    await user.clear(within(editor).getByLabelText('Unit'))
+    await user.type(within(editor).getByLabelText('Unit'), 'dozen')
+    await user.selectOptions(within(editor).getByLabelText('Protein'), 'chicken')
+    await user.selectOptions(within(editor).getByLabelText('Shopping category'), 'dairy')
+    await user.click(within(editor).getByRole('button', { name: 'Save ingredient' }))
+
+    expect(callbacks.onUpdateIngredient).toHaveBeenCalledWith({
+      id: 'eggs',
+      name: 'Large eggs',
+      unit: 'dozen',
+      proteinCategoryId: 'chicken',
+      shoppingCategoryId: 'dairy',
+    })
   })
 
   it('blocks duplicate ingredient names case-insensitively', async () => {

@@ -172,6 +172,7 @@ function App() {
             shoppingCategories={shopping.orderedShoppingCategories}
             onClose={meals.closeLibraryManager}
             onCreateIngredient={meals.createIngredient}
+            onUpdateIngredient={meals.updateIngredient}
             onDeleteIngredient={meals.deleteIngredient}
             onCreateProteinCategory={meals.createProteinCategory}
             onDeleteProteinCategory={meals.deleteProteinCategory}

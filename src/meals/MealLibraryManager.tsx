@@ -13,20 +13,27 @@ type MealLibraryManagerProps = {
   shoppingCategories: ShoppingCategory[]
   onClose: () => void
   onCreateIngredient: (ingredient: Ingredient) => void
+  onUpdateIngredient: (ingredient: Ingredient) => void
   onDeleteIngredient: (ingredientId: string) => void
   onCreateProteinCategory: (category: ProteinCategory) => void
   onDeleteProteinCategory: (categoryId: string) => void
 }
 
-export function MealLibraryManager({ meals, ingredients, proteinCategories, shoppingCategories, onClose, onCreateIngredient, onDeleteIngredient, onCreateProteinCategory, onDeleteProteinCategory }: MealLibraryManagerProps) {
+export function MealLibraryManager({ meals, ingredients, proteinCategories, shoppingCategories, onClose, onCreateIngredient, onUpdateIngredient, onDeleteIngredient, onCreateProteinCategory, onDeleteProteinCategory }: MealLibraryManagerProps) {
   const [panel, setPanel] = useState<'ingredients' | 'proteins'>('ingredients')
   const [showIngredientEditor, setShowIngredientEditor] = useState(false)
+  const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null)
   const [categoryName, setCategoryName] = useState('')
   const [categoryColor, setCategoryColor] = useState('#8a7f70')
   const [query, setQuery] = useState('')
   const [error, setError] = useState('')
 
-  useEscapeKey(showIngredientEditor ? () => setShowIngredientEditor(false) : onClose)
+  function closeIngredientEditor() {
+    setShowIngredientEditor(false)
+    setEditingIngredient(null)
+  }
+
+  useEscapeKey(showIngredientEditor ? closeIngredientEditor : onClose)
 
   const ingredientUsage = useMemo(() => new Set(meals.flatMap((meal) => meal.ingredients.map((item) => item.ingredientId))), [meals])
   const categoryUsage = useMemo(() => new Set([
@@ -64,7 +71,7 @@ export function MealLibraryManager({ meals, ingredients, proteinCategories, shop
         </div>
 
         {panel === 'ingredients' ? <div className="library-panel" role="tabpanel">
-          <button type="button" className="secondary" onClick={() => { setShowIngredientEditor(true); setError('') }}>+ Ingredient</button>
+          <button type="button" className="secondary" onClick={() => { setEditingIngredient(null); setShowIngredientEditor(true); setError('') }}>+ Ingredient</button>
           <label className="library-search">Search ingredients<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name" /></label>
           <div className="library-item-list">
             {visibleIngredients.map((ingredient) => {
@@ -72,7 +79,10 @@ export function MealLibraryManager({ meals, ingredients, proteinCategories, shop
               const inUse = ingredientUsage.has(ingredient.id)
               return <div className="library-item" key={ingredient.id}>
                 <div><strong>{ingredient.name}</strong><small>{ingredient.unit}{category ? <><span> · </span><ProteinDot category={category} /> {category.name}</> : ''}</small></div>
-                {inUse ? <span className="library-in-use">In use</span> : <button type="button" className="danger-text" onClick={() => onDeleteIngredient(ingredient.id)} aria-label={`Delete ${ingredient.name}`}>Delete</button>}
+                <div className="library-item-actions">
+                  <button type="button" className="secondary" onClick={() => { setEditingIngredient(ingredient); setShowIngredientEditor(true); setError('') }} aria-label={`Edit ${ingredient.name}`}>Edit</button>
+                  {inUse ? <span className="library-in-use">In use</span> : <button type="button" className="danger-text" onClick={() => onDeleteIngredient(ingredient.id)} aria-label={`Delete ${ingredient.name}`}>Delete</button>}
+                </div>
               </div>
             })}
             {visibleIngredients.length === 0 && <div className="ingredient-manager-empty">No ingredients match your search.</div>}
@@ -103,10 +113,12 @@ export function MealLibraryManager({ meals, ingredients, proteinCategories, shop
         ingredients={ingredients}
         proteinCategories={proteinCategories}
         shoppingCategories={shoppingCategories}
-        onCancel={() => setShowIngredientEditor(false)}
+        ingredient={editingIngredient}
+        onCancel={closeIngredientEditor}
         onSave={(ingredient) => {
-          onCreateIngredient(ingredient)
-          setShowIngredientEditor(false)
+          if (editingIngredient) onUpdateIngredient(ingredient)
+          else onCreateIngredient(ingredient)
+          closeIngredientEditor()
         }}
       />
     )}
