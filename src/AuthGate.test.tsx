@@ -62,6 +62,25 @@ describe('AuthGate', () => {
     expect(mocks.unsubscribe).toHaveBeenCalled()
   })
 
+  it('defers enrollment verification until after the auth callback returns', async () => {
+    let insideAuthCallback = false
+    let rpcCalledInsideCallback: boolean | null = null
+    mocks.rpc.mockImplementation(() => {
+      rpcCalledInsideCallback = insideAuthCallback
+      return Promise.resolve({ data: true, error: null })
+    })
+
+    render(<AuthGate><div>Private app</div></AuthGate>)
+    if (!authStateCallback) throw new Error('Auth listener was not registered')
+
+    insideAuthCallback = true
+    act(() => authStateCallback?.('INITIAL_SESSION', session))
+    insideAuthCallback = false
+
+    expect(await screen.findByText('Private app')).toBeInTheDocument()
+    expect(rpcCalledInsideCallback).toBe(false)
+  })
+
   it('enrolls a new anonymous device with the entered household code', async () => {
     const user = userEvent.setup()
     render(<AuthGate><div>Private app</div></AuthGate>)
