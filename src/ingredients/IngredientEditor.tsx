@@ -8,6 +8,7 @@ type IngredientEditorProps = {
   ingredients: Ingredient[]
   proteinCategories: ProteinCategory[]
   shoppingCategories: ShoppingCategory[]
+  ingredient?: Ingredient | null
   initialName?: string
   onSave: (ingredient: Ingredient) => void
   onCancel: () => void
@@ -17,15 +18,16 @@ export function IngredientEditor({
   ingredients,
   proteinCategories,
   shoppingCategories,
+  ingredient = null,
   initialName = '',
   onSave,
   onCancel,
 }: IngredientEditorProps) {
   const titleId = useId()
-  const [name, setName] = useState(initialName)
-  const [unit, setUnit] = useState('each')
-  const [proteinCategoryId, setProteinCategoryId] = useState('')
-  const [shoppingCategoryId, setShoppingCategoryId] = useState('')
+  const [name, setName] = useState(ingredient?.name ?? initialName)
+  const [unit, setUnit] = useState(ingredient?.unit ?? 'each')
+  const [proteinCategoryId, setProteinCategoryId] = useState(ingredient?.proteinCategoryId ?? '')
+  const [shoppingCategoryId, setShoppingCategoryId] = useState(ingredient?.shoppingCategoryId ?? '')
   const [error, setError] = useState('')
   const proteins = proteinCategories
     .filter((category) => category.id !== 'none')
@@ -39,17 +41,19 @@ export function IngredientEditor({
       setError('Add a name for this ingredient.')
       return
     }
-    if (findIngredientByName(ingredients, trimmedName)) {
+    const duplicate = findIngredientByName(ingredients, trimmedName)
+    if (duplicate && duplicate.id !== ingredient?.id) {
       setError('That ingredient already exists.')
       return
     }
 
-    onSave(buildIngredient(ingredients, {
+    const draft = {
       name: trimmedName,
-      unit,
+      unit: unit.trim() || 'each',
       proteinCategoryId: proteinCategoryId || null,
       shoppingCategoryId: shoppingCategoryId || null,
-    }))
+    }
+    onSave(ingredient ? { ...ingredient, ...draft } : buildIngredient(ingredients, draft))
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -70,7 +74,7 @@ export function IngredientEditor({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="modal-header">
-          <div><div className="eyebrow">INGREDIENT</div><h2 id={titleId}>New ingredient</h2></div>
+          <div><div className="eyebrow">INGREDIENT</div><h2 id={titleId}>{ingredient ? 'Edit ingredient' : 'New ingredient'}</h2></div>
           <button type="button" onClick={onCancel} aria-label="Close">×</button>
         </div>
 
