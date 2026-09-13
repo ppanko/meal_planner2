@@ -55,6 +55,31 @@ describe('mobile planner day collapse', () => {
     expect(screen.getAllByRole('button', { name: 'Mobile add Breakfast' })).toHaveLength(4)
   })
 
+  it('reveals past days one at a time from most recent to oldest', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 20, 12))
+
+    renderPlanner()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 3 past days' }))
+    expect(screen.getByRole('button', { name: 'Show previous day' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Monday/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Tuesday/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Wednesday/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show previous day' }))
+    expect(screen.getByRole('button', { name: 'Collapse Wednesday' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Tuesday/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Monday/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show previous day' }))
+    expect(screen.getByRole('button', { name: 'Collapse Tuesday' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Monday/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Wednesday' }))
+    expect(screen.queryByRole('button', { name: /Wednesday/ })).not.toBeInTheDocument()
+  })
+
   it('reveals past-day headers and keeps an expanded past day visible when the group is hidden', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 20, 12))
