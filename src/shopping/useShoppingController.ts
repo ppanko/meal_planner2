@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { findIngredientByName } from '../ingredients/catalog'
 import { defaultShoppingCategories } from '../types'
-import type { AppState, ManualShoppingItem, ShoppingCategory } from '../types'
+import type { AppState, Ingredient, ManualShoppingItem, ShoppingCategory } from '../types'
 import { dateKey } from '../utils/dates'
 import { slug } from '../utils/text'
 import {
@@ -176,14 +176,65 @@ export function useShoppingController({
     })
   }
 
+  function hasActiveManualItem(items: ManualShoppingItem[], name: string) {
+    const normalized = name.trim().toLowerCase()
+    return items.some((item) => !item.checked && item.name.trim().toLowerCase() === normalized)
+  }
+
+  function linkedShoppingItem(ingredient: Ingredient): ManualShoppingItem {
+    return {
+      id: crypto.randomUUID(),
+      name: ingredient.name,
+      checked: false,
+      shoppingCategoryId: ingredient.shoppingCategoryId ?? null,
+      ingredientId: ingredient.id,
+      quantity: 1,
+      unit: ingredient.unit,
+    }
+  }
+
+  function addIngredientToShopping(ingredientId: string) {
+    if (!state) return
+
+    const ingredient = state.ingredients.find((item) => item.id === ingredientId)
+    if (!ingredient) return
+
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    if (hasActiveManualItem(current, ingredient.name)) return
+
+    update({
+      ...state,
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: [...current, linkedShoppingItem(ingredient)],
+      },
+    })
+  }
+
+  function createIngredientAndAddToShopping(ingredient: Ingredient) {
+    if (!state) return
+    if (state.ingredients.some((item) => item.id === ingredient.id) || findIngredientByName(state.ingredients, ingredient.name)) return
+
+    const current = state.manualShoppingItems[shoppingWeekKey] ?? []
+    if (hasActiveManualItem(current, ingredient.name)) return
+
+    update({
+      ...state,
+      ingredients: [...state.ingredients, ingredient],
+      manualShoppingItems: {
+        ...state.manualShoppingItems,
+        [shoppingWeekKey]: [...current, linkedShoppingItem(ingredient)],
+      },
+    })
+  }
+
   function addShoppingItem(name: string, shoppingCategoryId: string | null = null) {
     if (!state) return
     const trimmed = name.trim()
     if (!trimmed) return
 
     const current = state.manualShoppingItems[shoppingWeekKey] ?? []
-    const normalized = trimmed.toLowerCase()
-    if (current.some((item) => !item.checked && item.name.trim().toLowerCase() === normalized)) return
+    if (hasActiveManualItem(current, trimmed)) return
 
     const existingIngredient = findIngredientByName(state.ingredients, trimmed)
     const linkedIngredient = existingIngredient && !existingIngredient.shoppingCategoryId && shoppingCategoryId
@@ -361,6 +412,8 @@ export function useShoppingController({
     moveShoppingCategory,
     deleteShoppingCategory,
     toggleShopping,
+    addIngredientToShopping,
+    createIngredientAndAddToShopping,
     addManualShoppingItem,
     addHistoryItemToShopping,
     setShoppingItemCategory,
