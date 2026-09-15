@@ -13,7 +13,7 @@ The intended flow is:
 5. The app creates or reuses an anonymous Supabase session, creates an isolated household and planner, enrolls that user as the household's first member, and shows the household-specific join code.
 6. Additional devices or household members can later enroll with that join code using the existing enrollment concept.
 
-The email address is not an authentication credential and does not need to be stored by the application. It remains part of the owner's manual communication workflow.
+The email address is not an authentication credential and is not stored by the application. It remains part of the owner's manual communication workflow.
 
 ## Constraints
 
@@ -47,12 +47,12 @@ Represents one isolated planner household.
 - `id uuid primary key`
 - `state_id text unique not null`
 - `name text not null`
-- `code_hash text not null`
+- `code_hash text unique not null`
 - `created_at timestamptz not null default now()`
 
 `state_id` is separate from the UUID so the existing production planner can retain its legacy state row ID, `household`, during migration. New households use their UUID string as `state_id`.
 
-Household names are display labels only. They are not identifiers and do not need to be unique.
+Household names are display labels only. They are not identifiers and do not need to be unique. The server trims leading/trailing whitespace, requires 1-80 characters after trimming, and rejects control characters. The client mirrors these limits for immediate feedback, but the server remains authoritative.
 
 ### `meal_planner_members`
 
@@ -77,7 +77,7 @@ Stores one-time invitation records.
 - `redeemed_by uuid references auth.users(id)`
 - `household_id uuid references meal_planner_households(id)`
 
-Only a hash of the bearer token is stored. The plaintext token is returned once to the admin client and placed in the invitation URL.
+Only a hash of the bearer token is stored. Invitation tokens use 32 cryptographically random bytes encoded as hex. The plaintext token is returned once to the admin client and placed in the invitation URL.
 
 The invite table does not store the recipient email because the application does not send or verify email.
 
@@ -85,9 +85,9 @@ The invite table does not store the recipient email because the application does
 
 The expansion migration creates one `meal_planner_households` row for the existing planner. Its `state_id` is `household`.
 
-All existing `meal_planner_members` rows are backfilled to that legacy household before `household_id` becomes non-null.
+The legacy household's `code_hash` is copied from `meal_planner_access.code_hash` for the existing `id = 'household'` row. The source access row/table remains unchanged during expansion so the old deployed enrollment RPC continues to work.
 
-The current shared household access hash remains valid for the legacy household. During the expansion window, the old enrollment RPC and old deployed client continue to work for the legacy household.
+All existing `meal_planner_members` rows are backfilled to that legacy household before `household_id` becomes non-null.
 
 No existing state row is copied or renamed. The production row with `meal_planner_state.id = 'household'` remains in place.
 
@@ -112,7 +112,7 @@ Behavior:
 
 1. Require `auth.uid()`.
 2. Require the current user to exist in `meal_planner_admins`.
-3. Generate a cryptographically random bearer token.
+3. Generate 32 cryptographically random bytes and encode them as the bearer token.
 4. Store only its SHA-256 hash.
 5. Set `expires_at` to seven days after creation.
 6. Return the plaintext token and expiry once.
@@ -128,10 +128,10 @@ Within one database transaction the function:
 1. Validates and locks the invitation row by token hash.
 2. Rejects expired or already-redeemed invites.
 3. Rejects a user who already belongs to a household.
-4. Validates and normalizes the household name constraints.
+4. Trims and validates the household name using the 1-80 character rule above.
 5. Validates `initial_state` with the existing server-side planner-state validator.
-6. Creates a household UUID and random household join code.
-7. Stores only the join-code hash.
+6. Creates a household UUID and a join code using the current scheme: 12 cryptographically random bytes encoded as hex.
+7. Stores only the join-code SHA-256 hash.
 8. Creates the first membership for `auth.uid()`.
 9. Creates the household's initial `meal_planner_state` row using the household `state_id`, revision 1, and the same server-side state protections used by normal writes.
 10. Marks the invite redeemed and records the resulting household.
@@ -143,7 +143,7 @@ If any step fails, the transaction rolls back all changes.
 
 Authenticated security-definer RPC for subsequent devices/people.
 
-It hashes the submitted code, finds the matching household, rejects users already enrolled elsewhere, inserts membership, and returns the resolved household context.
+It hashes the submitted code, finds the matching household by `code_hash`, rejects users already enrolled elsewhere, inserts membership, and returns the resolved household context.
 
 The current `enroll_meal_planner_device(access_code)` remains temporarily for old-client compatibility and continues to enroll into the legacy household only.
 
@@ -188,15 +188,14 @@ After successful redemption, remove the invite token from the visible URL with `
 
 ### Admin invite surface
 
-Expose a small admin-only control only when `isAdmin` is true. It needs only:
+When `isAdmin` is true, add a low-prominence `Invite household` text button to the existing top-bar actions. It opens a small modal containing only:
 
 - Create invite button
 - expiry display
 - copyable invitation link
+- close control
 
-No recipient email input is required because the application is not responsible for sending email.
-
-The surface should be placed in an existing low-prominence management/settings area rather than adding a new primary navigation tab.
+The button is absent for non-admin users. No recipient email input is required because the application is not responsible for sending email.
 
 ### Invite redemption surface
 
@@ -251,6 +250,7 @@ If the owner later loses that anonymous browser identity, admin reassignment is 
 Extend the existing PGlite Supabase SQL tests to cover:
 
 - migration of existing members into the legacy household
+- copy of the legacy access hash into the legacy household
 - old `is_meal_planner_authorized()` behavior for the legacy client
 - old enrollment RPC still enrolling only into the legacy household during expansion
 - only a designated admin can create invitations
@@ -258,6 +258,7 @@ Extend the existing PGlite Supabase SQL tests to cover:
 - seven-day expiration enforcement
 - one-time redemption and replay rejection
 - atomic rollback on redemption failure
+- household-name validation
 - one-household-per-user enforcement
 - household join-code enrollment
 - cross-household state reads denied by RLS
@@ -274,6 +275,7 @@ Cover:
 - anonymous session creation before redemption
 - successful redemption resolves the new household and clears the token from the URL
 - invalid/expired/reused invite errors
+- household-name validation
 - join code resolves the correct household
 - admin invite control visible only to the designated admin
 - persistence uses the resolved household `stateId` for read/write/realtime
