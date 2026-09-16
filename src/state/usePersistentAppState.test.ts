@@ -5,6 +5,8 @@ import type { AppState } from '../types'
 import type { LoadedSyncState, RemoteStateSnapshot } from '../sync/syncTypes'
 
 const mocks = vi.hoisted(() => ({
+  stateId: '11111111-1111-4111-8111-111111111111',
+  stateIds: [] as string[],
   loadSyncState: vi.fn(),
   saveState: vi.fn(),
   cacheSyncState: vi.fn(),
@@ -14,13 +16,37 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
 }))
 
+vi.mock('../households/HouseholdContext', () => ({
+  useHouseholdSession: () => ({
+    householdId: mocks.stateId,
+    stateId: mocks.stateId,
+    householdName: 'Test household',
+    isAdmin: false,
+  }),
+}))
+
 vi.mock('../storage', async (importOriginal) => ({
   ...await importOriginal<typeof import('../storage')>(),
-  loadSyncState: mocks.loadSyncState,
-  saveState: mocks.saveState,
-  cacheSyncState: mocks.cacheSyncState,
-  refreshRemoteState: mocks.refreshRemoteState,
-  subscribeToRemoteState: mocks.subscribeToRemoteState,
+  loadSyncState: (stateId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.loadSyncState()
+  },
+  saveState: (stateId: string, state: AppState, revision: number, mutationId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.saveState(state, revision, mutationId)
+  },
+  cacheSyncState: (stateId: string, snapshot: unknown) => {
+    mocks.stateIds.push(stateId)
+    return mocks.cacheSyncState(snapshot)
+  },
+  refreshRemoteState: (stateId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.refreshRemoteState()
+  },
+  subscribeToRemoteState: (stateId: string, listener: (snapshot: RemoteStateSnapshot) => void) => {
+    mocks.stateIds.push(stateId)
+    return mocks.subscribeToRemoteState(listener)
+  },
 }))
 
 import { usePersistentAppState } from './usePersistentAppState'
@@ -45,6 +71,7 @@ function savedResult(state: AppState, revision: number) {
 }
 
 beforeEach(() => {
+  mocks.stateIds.length = 0
   mocks.loadSyncState.mockReset()
   mocks.saveState.mockReset().mockImplementation((state: AppState, revision: number) =>
     Promise.resolve(savedResult(state, revision + 1)))
@@ -62,7 +89,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('usePersistentAppState', () => {
-  it('loads a sync session, accepts newer realtime state, and unsubscribes', async () => {
+  it('loads a household sync session, accepts newer realtime state, and unsubscribes', async () => {
     const initial = createAppState({ meals: [] })
     const newer = createAppState({ ingredients: [] })
     mocks.loadSyncState.mockResolvedValue(loaded(initial, { revision: 4 }))
@@ -71,6 +98,7 @@ describe('usePersistentAppState', () => {
     expect(result.current.storageReady).toBe(false)
     await waitFor(() => expect(result.current.state).toEqual(initial))
     expect(result.current.syncStatus).toBe('saved')
+    expect(mocks.stateIds.every((stateId) => stateId === mocks.stateId)).toBe(true)
 
     act(() => mocks.remoteListener?.(remote(newer, 5)))
     expect(result.current.state).toEqual(newer)
@@ -258,7 +286,7 @@ describe('usePersistentAppState', () => {
     expect(result.current.state?.planner['2026-08-17'].Dinner).toEqual([])
   })
 
-  it('restores and syncs pending changes loaded from local persistence', async () => {
+  it('restores and syncs pending changes loaded from household-local persistence', async () => {
     const initial = createAppState()
     const pendingState = { ...initial, plannerNotes: { '2026-08-17': { Dinner: 'Recovered' } } }
     mocks.loadSyncState.mockResolvedValue(loaded(pendingState, {
