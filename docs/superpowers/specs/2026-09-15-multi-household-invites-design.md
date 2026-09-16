@@ -27,7 +27,7 @@ The email address is not an authentication credential and is not stored by the a
 - Email delivery remains manual; no email provider is added.
 - Existing household data and already-enrolled devices must remain usable throughout rollout.
 - Existing local IndexedDB/localStorage data must never be replayed into a different household.
-- The existing versioned-sync expand/deploy/contract compatibility rules remain in force, but the prepared August contract migration must be superseded by a later contract after this feature rather than promoted out of order.
+- The existing versioned-sync expand/deploy/contract compatibility rules remain in force, but the prepared August contract migration must be retired and superseded by a later contract after this feature rather than promoted out of order.
 - No real email address, user ID, join code, invite token, or Supabase secret may be committed or printed in tests/docs.
 
 ## Data model
@@ -97,6 +97,21 @@ The legacy household's `code_hash` is copied from `meal_planner_access.code_hash
 All existing `meal_planner_members` rows are backfilled to that legacy household before `household_id` becomes non-null.
 
 No existing state row is copied or renamed. The production row with `meal_planner_state.id = 'household'` remains in place.
+
+### Remove the single-state schema constraint
+
+The current database has a `meal_planner_household_state_id` check constraint that requires every `meal_planner_state.id` to equal `household`. Multi-household state cannot work while that hard schema restriction exists.
+
+The multi-household expansion migration must therefore explicitly drop `meal_planner_household_state_id`. `supabase/setup.sql` for fresh projects must stop creating that constraint.
+
+Do not replace it with another hard-coded state-ID check. Valid state access is instead constrained by:
+
+- `meal_planner_households.state_id` being unique;
+- household creation/redemption RPCs creating the corresponding planner state row;
+- the household-aware RLS read policy; and
+- `save_meal_planner_state()` validating that the caller can access the requested household state ID.
+
+Tests must prove both that the existing `household` state remains valid and that a UUID-backed household state row can be created and saved.
 
 ### Legacy-client authorization during expansion
 
@@ -205,6 +220,18 @@ The persistence layer stops importing a build-time global state ID for normal op
 
 The legacy `VITE_SUPABASE_STATE_ID` setting can remain only as a temporary compatibility/configuration fallback during the staged rollout and should be removed in the later contract cleanup when no deployed client depends on it.
 
+### Race-safe household resolution
+
+The current `AuthGate` can launch overlapping asynchronous authorization checks from the initial `getSession()` call and later auth-state events. A stale response must never overwrite household context for a newer active session.
+
+Household resolution must therefore be keyed to the active authenticated user/session. Before applying any `get_my_meal_planner_household()` result, the gate must verify that the result still belongs to the session/user for which the request was started. An implementation may use a monotonically increasing request generation, an abort/cancellation pattern, or an equivalent identity check, but the invariant is mandatory:
+
+> only the most recent active auth session may publish household context.
+
+When the authenticated user changes, clear the previous household context before resolving the new one so child persistence hooks cannot continue operating under a stale `stateId`.
+
+Tests must simulate rapid session transitions and out-of-order household RPC responses and prove that an older response cannot replace the newer user's household context.
+
 ### Household-scoped local persistence
 
 Current IndexedDB/localStorage keys are global to the browser origin. Multi-household support must scope all cached state and pending sync data to the resolved `stateId` before loading any planner data.
@@ -288,28 +315,33 @@ This feature must be layered onto the currently deployed versioned-sync expansio
 1. **Keep the database in the existing `versioned_sync = 'expand'` phase.** Do not promote `supabase/contracts/20260819020000_contract_versioned_sync.sql`.
 2. Add a new, later-timestamped multi-household expansion migration that:
    - introduces households, admins, invites, member backfill, household-aware authorization, and new RPCs;
+   - drops the current `meal_planner_household_state_id` constraint so UUID-backed state rows are valid;
    - narrows `is_meal_planner_authorized()`, the temporary direct-write policies, and `guard_legacy_meal_planner_write()` to legacy-household members only;
    - preserves old enrollment into the legacy household;
    - preserves direct-write compatibility for legacy-household stale clients only.
-3. Update `supabase/setup.sql` so a fresh project receives the current multi-household schema.
-4. Update the frontend to resolve its household dynamically, scope remote and local persistence by `stateId`, and support admin invites/redemption.
-5. Deploy the expansion migration and new frontend using the existing build-before-migrate-before-deploy safety workflow.
-6. Verify in production:
+3. In the same expansion change, retire the obsolete August contract artifact and all instructions/tests that still describe promoting it. Update `docs/VERSIONED_SYNC_ROLLOUT.md`, `docs/SECURITY_RELIABILITY_TRACKER.md`, `src/persistence/supabaseSetup.test.ts`, and `src/persistence/supabaseSql.integration.test.ts` so there is no executable or documented path that later moves `20260819020000_contract_versioned_sync.sql` into migrations.
+4. Update `supabase/setup.sql` so a fresh project receives the current multi-household schema and does not recreate the single-state-ID constraint.
+5. Update the frontend to resolve its household dynamically and race-safely, scope remote and local persistence by `stateId`, and support admin invites/redemption.
+6. Deploy the expansion migration and new frontend using the existing build-before-migrate-before-deploy safety workflow.
+7. Verify in production:
    - existing legacy household read/write/reload;
    - intentionally retained stale legacy client read/write;
    - stale client under a newly created household is denied legacy state access;
+   - UUID-backed new household state creation and save;
    - new invite creation/redemption;
    - join-code enrollment;
    - household-local IndexedDB separation;
    - two-client realtime sync and normal CAS saves in both legacy and new households.
-7. Leave this expanded compatibility state in place for at least one normal usage cycle.
-8. After the multi-household frontend is confirmed, create a **new later-timestamped contract migration** that performs the versioned-sync contract cleanup plus any obsolete single-household cleanup required by this feature.
+8. Leave this expanded compatibility state in place for at least one normal usage cycle.
+9. After the multi-household frontend is confirmed, create a **new later-timestamped contract migration** that performs the versioned-sync contract cleanup plus any obsolete single-household cleanup required by this feature.
 
-### Superseding the prepared August contract
+### Retiring and superseding the prepared August contract
 
 `supabase/contracts/20260819020000_contract_versioned_sync.sql` must not later be moved into `supabase/migrations/` after a September multi-household migration has shipped. Its timestamp and assumptions predate the multi-household expansion.
 
-During implementation, mark that prepared contract as superseded and replace it with a new contract file whose timestamp is later than the multi-household expansion. The replacement contract should include the still-valid cleanup from the August contract—revoking temporary direct writes, dropping temporary write policies/trigger, and moving the release marker to `contract`—but against the household-aware schema and compatibility helpers that actually exist after this feature.
+As part of the multi-household expansion implementation, remove that obsolete prepared contract file from the active contract workflow and remove/update every repository instruction or test that treats it as promotable. Historical references may remain only where clearly labeled as superseded history; no command or automated test may instruct an operator to promote the August file.
+
+After the multi-household expansion has been deployed and verified, create a new contract file whose timestamp is later than the multi-household expansion. The replacement contract should include the still-valid cleanup from the August contract—revoking temporary direct writes, dropping temporary write policies/trigger, and moving the release marker to `contract`—but against the household-aware schema and compatibility helpers that actually exist after this feature.
 
 No already-applied immutable migration is edited.
 
@@ -345,6 +377,8 @@ Extend the existing PGlite Supabase SQL tests to cover:
 
 - migration of existing members into the legacy household
 - copy of the legacy access hash into the legacy household
+- removal of the `meal_planner_household_state_id` single-state constraint
+- successful creation/read/save of a UUID-backed household state row
 - all new household/admin/invite/member tables have RLS enabled and no unintended direct browser privileges
 - old `is_meal_planner_authorized()` authorizes legacy-household members only
 - old enrollment RPC still enrolling only into the legacy household during expansion
@@ -363,12 +397,15 @@ Extend the existing PGlite Supabase SQL tests to cover:
 - valid save/conflict/replay behavior preserved within each household
 - initial state validation during invitation redemption
 - fresh bootstrap creates the legacy/bootstrap household and matching access hash without creating an admin automatically
+- no active documentation/test path still promotes `20260819020000_contract_versioned_sync.sql`
 
 ### Client/local-persistence tests
 
 Cover:
 
 - existing enrolled session opens the correct household
+- household resolution ignores an older out-of-order RPC response after the auth session/user changes
+- changing auth users clears stale household context before the new household resolves
 - invite fragment shows redemption UI
 - anonymous session creation before redemption
 - successful redemption resolves the new household and clears the fragment from the URL
