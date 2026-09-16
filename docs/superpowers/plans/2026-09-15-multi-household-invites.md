@@ -36,10 +36,12 @@ Create:
 
 Modify:
 - `supabase/setup.sql` — fresh-project multi-household bootstrap.
+- `SUPABASE_SETUP.md` — current owner bootstrap, invite, join-code, and rollout instructions.
 - `src/persistence/supabaseSql.integration.test.ts` — executable SQL/RLS/RPC coverage.
 - `src/persistence/supabaseSetup.test.ts` — source-of-truth/setup/contract-retirement assertions.
 - `src/AuthGate.tsx`, `src/AuthGate.test.tsx` — household resolution, join-code enrollment, invite redemption, auth-race protection.
 - `src/persistence/localState.ts`, `src/storage.ts`, `src/persistence/remoteState.ts` — household-scoped local/remote persistence.
+- `src/supabase.ts`, `src/supabase.test.ts` — retain only compatibility configuration; no normal persistence lookup through `sharedStateId`.
 - `src/storage.test.ts`, `src/storage.remote.test.ts`, `src/state/usePersistentAppState.ts`, `src/state/usePersistentAppState.test.ts` — persistence regression coverage.
 - `src/App.tsx`, `src/App.test.tsx`, `src/styles.css` — admin invite entry point/modal.
 - `docs/VERSIONED_SYNC_ROLLOUT.md`, `docs/SECURITY_RELIABILITY_TRACKER.md`, `.github/workflows/deploy.yml` — current expansion/contract operational truth.
@@ -67,18 +69,31 @@ Delete:
 
 - [ ] **Step 1: Write failing PGlite tests for schema and household isolation**
 
-Add tests that assert:
+Follow the existing `db.query(...)` pattern in `supabaseSql.integration.test.ts`. Add direct catalog checks such as:
 
 ```ts
-expect(await constraintExists('meal_planner_household_state_id')).toBe(false)
-expect(await canInsertUuidHouseholdState()).toBe(true)
-expect(await legacyAuthorization('legacy-user')).toBe(true)
-expect(await legacyAuthorization('new-household-user')).toBe(false)
-expect(await canReadState('household-a-user', 'household-b-state')).toBe(false)
-expect(await canSaveState('household-a-user', 'household-b-state')).toBe(false)
+const constraint = await db.query<{ count: number }>(`
+  select count(*)::int as count
+  from pg_constraint
+  where conname = 'meal_planner_household_state_id'
+`)
+expect(constraint.rows[0]).toEqual({ count: 0 })
+
+const rls = await db.query<{ relname: string; relrowsecurity: boolean }>(`
+  select relname, relrowsecurity
+  from pg_class
+  where relname in (
+    'meal_planner_households',
+    'meal_planner_admins',
+    'meal_planner_invites',
+    'meal_planner_members'
+  )
+  order by relname
+`)
+expect(rls.rows.every((row) => row.relrowsecurity)).toBe(true)
 ```
 
-Also assert new tables have RLS enabled and no direct `anon`/`authenticated` table privileges.
+For UUID state support, insert two test users, enroll them into separate household rows, set `request.jwt.claim.sub` before each operation, then assert `save_meal_planner_state(uuidStateId, ...)` succeeds only for the matching member and rejects the other household. Add the same two-user setup to prove `is_meal_planner_authorized()` remains true only for the migrated legacy household.
 
 - [ ] **Step 2: Run the focused SQL tests and verify red**
 
@@ -96,7 +111,7 @@ Create these tables in the expansion migration and equivalent current definition
 
 ```sql
 create table public.meal_planner_households (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key,
   state_id text not null unique,
   name text not null,
   code_hash text not null unique,
@@ -109,7 +124,7 @@ create table public.meal_planner_admins (
 );
 
 create table public.meal_planner_invites (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key,
   token_hash text not null unique,
   created_by uuid not null references auth.users(id),
   created_at timestamptz not null default now(),
@@ -120,7 +135,7 @@ create table public.meal_planner_invites (
 );
 ```
 
-Add `household_id uuid` to `meal_planner_members`, create/backfill one legacy household whose `state_id = 'household'` and `code_hash` copies the existing legacy access hash, then make membership `household_id` non-null with FK. Keep `user_id` as the primary key.
+Generate UUID values inside the relevant SQL statements/functions with `gen_random_uuid()`; add `household_id uuid` to `meal_planner_members`, create/backfill one legacy household whose `state_id = 'household'` and `code_hash` copies the existing legacy access hash, then make membership `household_id` non-null with FK. Keep `user_id` as the primary key.
 
 Explicitly execute:
 
@@ -163,11 +178,18 @@ Redefine `is_meal_planner_authorized()` to return true only for membership in th
 
 - [ ] **Step 5: Lock down new tables**
 
-For `meal_planner_households`, `meal_planner_admins`, `meal_planner_invites`, and `meal_planner_members`:
+Apply explicit statements to every new/direct-membership table:
 
 ```sql
-alter table public.<table> enable row level security;
-revoke all on table public.<table> from anon, authenticated;
+alter table public.meal_planner_households enable row level security;
+alter table public.meal_planner_admins enable row level security;
+alter table public.meal_planner_invites enable row level security;
+alter table public.meal_planner_members enable row level security;
+
+revoke all on table public.meal_planner_households from anon, authenticated;
+revoke all on table public.meal_planner_admins from anon, authenticated;
+revoke all on table public.meal_planner_invites from anon, authenticated;
+revoke all on table public.meal_planner_members from anon, authenticated;
 ```
 
 Grant only `execute` on the intended RPCs to `authenticated`. Keep direct planner-state `select` for Realtime/read sync, scoped by RLS.
@@ -195,18 +217,20 @@ git commit -m "feat: add multi-household database boundary"
 
 ---
 
-### Task 2: Retire the obsolete versioned-sync contract path
+### Task 2: Retire the obsolete contract path and update operator docs
 
 **Files:**
 - Delete: `supabase/contracts/20260819020000_contract_versioned_sync.sql`
 - Modify: `docs/VERSIONED_SYNC_ROLLOUT.md`
 - Modify: `docs/SECURITY_RELIABILITY_TRACKER.md`
+- Modify: `SUPABASE_SETUP.md`
 - Modify: `.github/workflows/deploy.yml`
 - Modify: `src/persistence/supabaseSetup.test.ts`
 - Modify: `src/persistence/supabaseSql.integration.test.ts`
 
 **Interfaces:**
 - Produces one operational rule: database remains in `versioned_sync = 'expand'` until a new post-household contract migration is authored after production verification.
+- Produces current operator instructions for bootstrap household enrollment, manual admin designation, invite creation, and household-specific join codes.
 
 - [ ] **Step 1: Add failing source assertions**
 
@@ -215,6 +239,8 @@ Assert repository text no longer exposes the old promotion command or treats the
 ```ts
 expect(rolloutDoc).not.toContain('git mv supabase/contracts/20260819020000_contract_versioned_sync.sql')
 expect(workflow).not.toContain('Contract SQL remains under supabase/contracts')
+expect(setupDoc).toContain('meal_planner_admins')
+expect(setupDoc).toContain('Invite household')
 ```
 
 - [ ] **Step 2: Run focused tests red**
@@ -229,11 +255,13 @@ npm test -- src/persistence/supabaseSetup.test.ts src/persistence/supabaseSql.in
 
 Update the security tracker to the same current state. Replace the deploy workflow comment with a neutral statement that only expansion-compatible migrations live under `supabase/migrations/` during this release.
 
+Update `SUPABASE_SETUP.md` so fresh setup is: run setup SQL, save bootstrap household code, enroll the owner device, identify that anonymous user ID in Supabase, insert it into `meal_planner_admins`, then use the app's `Invite household` control for new households. Document that household join codes add another device/person to that same household and that email delivery remains manual.
+
 - [ ] **Step 4: Run focused tests green and commit**
 
 ```bash
 npm test -- src/persistence/supabaseSetup.test.ts src/persistence/supabaseSql.integration.test.ts
-git add docs/VERSIONED_SYNC_ROLLOUT.md docs/SECURITY_RELIABILITY_TRACKER.md .github/workflows/deploy.yml src/persistence/supabaseSetup.test.ts src/persistence/supabaseSql.integration.test.ts
+git add docs/VERSIONED_SYNC_ROLLOUT.md docs/SECURITY_RELIABILITY_TRACKER.md SUPABASE_SETUP.md .github/workflows/deploy.yml src/persistence/supabaseSetup.test.ts src/persistence/supabaseSql.integration.test.ts
 git rm supabase/contracts/20260819020000_contract_versioned_sync.sql
 git commit -m "docs: retire obsolete sync contract path"
 ```
@@ -294,7 +322,20 @@ npm test -- src/AuthGate.test.tsx
 
 - [ ] **Step 3: Implement typed RPC wrappers and context**
 
-`api.ts` normalizes Supabase snake_case rows into the exported camelCase types and throws on RPC errors. `redeemHouseholdInvite()` passes `normalizeState({})` as `initial_state` so a new household never inherits browser-local planner data.
+`api.ts` must use these RPC calls exactly:
+
+```ts
+const { data, error } = await supabase.rpc('get_my_meal_planner_household')
+const { data, error } = await supabase.rpc('enroll_meal_planner_household', { access_code: accessCode })
+const { data, error } = await supabase.rpc('create_meal_planner_invite')
+const { data, error } = await supabase.rpc('redeem_meal_planner_invite', {
+  invite_token: token,
+  household_name: householdName.trim(),
+  initial_state: normalizeState({}),
+})
+```
+
+Normalize Supabase snake_case rows into the exported camelCase types and throw RPC errors. Passing `normalizeState({})` as `initial_state` ensures a new household never inherits browser-local planner data.
 
 `HouseholdContext.tsx` exposes:
 
@@ -321,11 +362,11 @@ const resolutionGeneration = useRef(0)
 
 async function refresh(nextSession: Session | null) {
   const generation = ++resolutionGeneration.current
+  setSession(nextSession)
   setHousehold(null)
   setChecking(true)
   const resolved = nextSession ? await getMyHousehold() : null
   if (!mounted || generation !== resolutionGeneration.current) return
-  setSession(nextSession)
   setHousehold(resolved)
   setChecking(false)
 }
@@ -349,6 +390,8 @@ git commit -m "feat: resolve household sessions in auth gate"
 - Modify: `src/persistence/localState.ts`
 - Modify: `src/persistence/remoteState.ts`
 - Modify: `src/storage.ts`
+- Modify: `src/supabase.ts`
+- Modify: `src/supabase.test.ts`
 - Modify: `src/state/usePersistentAppState.ts`
 - Modify: `src/storage.test.ts`
 - Modify: `src/storage.remote.test.ts`
@@ -376,12 +419,12 @@ saveState(stateId: string, state: AppState, expectedRevision?: number, mutationI
 
 Write local persistence tests proving state and pending queue for `household-a` are invisible to `household-b`. Add a legacy migration test that unscoped `state`/`sync-state-v2` data migrates only when `stateId === 'household'`.
 
-Update remote tests to assert `.eq('id', stateId)`, RPC `requested_id: stateId`, and Realtime channel/filter names use the provided ID.
+Update remote tests to assert `.eq('id', stateId)`, RPC `requested_id: stateId`, and Realtime channel/filter names use the provided ID. Update `supabase.test.ts` so compatibility configuration may still export `sharedStateId`, but no persistence module test expects it to drive normal reads/writes.
 
 - [ ] **Step 2: Run persistence tests red**
 
 ```bash
-npm test -- src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts
+npm test -- src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts src/supabase.test.ts
 ```
 
 - [ ] **Step 3: Implement namespaced local keys**
@@ -401,7 +444,22 @@ For `stateId === 'household'` only, if scoped keys do not exist, import old unsc
 
 - [ ] **Step 4: Parameterize remote/storage functions**
 
-Remove normal-operation dependency on `sharedStateId`. Every read, CAS write, and Realtime filter receives `stateId` from its caller.
+Remove `sharedStateId` imports from `src/persistence/remoteState.ts` and normal storage flows. Every read, CAS write, and Realtime filter receives `stateId` from its caller:
+
+```ts
+.eq('id', stateId)
+
+await supabase.rpc('save_meal_planner_state', {
+  requested_id: stateId,
+  requested_state: state,
+  expected_revision: expectedRevision,
+  mutation_id: mutationId,
+})
+
+.channel(`meal-planner-state-${stateId}`)
+```
+
+Keep `sharedStateId` in `src/supabase.ts` only if an explicit compatibility test or transitional code path still requires it; it must not be imported by normal persistence after this task.
 
 - [ ] **Step 5: Bind the state hook to HouseholdContext**
 
@@ -416,8 +474,8 @@ Pass `stateId` through load/cache/save/subscribe calls. Make the initialization 
 - [ ] **Step 6: Run persistence tests green and commit**
 
 ```bash
-npm test -- src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts
-git add src/persistence/localState.ts src/persistence/remoteState.ts src/storage.ts src/state/usePersistentAppState.ts src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts
+npm test -- src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts src/supabase.test.ts
+git add src/persistence/localState.ts src/persistence/remoteState.ts src/storage.ts src/supabase.ts src/supabase.test.ts src/state/usePersistentAppState.ts src/storage.test.ts src/storage.remote.test.ts src/state/usePersistentAppState.test.ts
 git commit -m "feat: scope planner persistence by household"
 ```
 
@@ -554,7 +612,7 @@ Verify:
 - `20260915000000_multi_household_expansion.sql` is the only new expansion migration;
 - obsolete August contract file/instructions are gone;
 - no secret/user/token/code literals are committed;
-- `VITE_SUPABASE_STATE_ID` is not used by normal new-client persistence;
+- `VITE_SUPABASE_STATE_ID`/`sharedStateId` is not used by normal new-client persistence;
 - the old enrollment RPC and stale-client direct-write path remain legacy-household-only;
 - no UUID household can read/write `state_id = 'household'` unless actually a member of the legacy household.
 
