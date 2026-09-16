@@ -1,19 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./supabase', () => ({
-  sharedStateId: 'test-household',
   supabase: {},
   supabaseConfigured: false,
 }))
 
 import { seedProteinCategories, seedState } from './data'
-import { loadState, normalizeState, resetState, saveState } from './storage'
+import { cacheSyncState, loadState, loadSyncState, normalizeState, resetState, saveState } from './storage'
 import { defaultShoppingCategories } from './types'
 import type { AppState } from './types'
 
+const LEGACY_STATE_ID = 'household'
+const OTHER_STATE_ID = '22222222-2222-4222-8222-222222222222'
+
 beforeEach(async () => {
   localStorage.clear()
-  await resetState()
+  await resetState(LEGACY_STATE_ID)
+  await resetState(OTHER_STATE_ID)
 })
 
 describe('normalizeState', () => {
@@ -246,37 +249,64 @@ describe('normalizeState', () => {
 })
 
 describe('local persistence', () => {
-  it('loads seed state when storage is empty', async () => {
-    const result = await loadState()
+  it('loads seed state when a household namespace is empty', async () => {
+    const result = await loadState(LEGACY_STATE_ID)
     expect(result.meals.map(({ id }) => id)).toEqual(seedState.meals.map(({ id }) => id))
   })
 
-  it('round-trips normalized state through IndexedDB', async () => {
-    await saveState({
+  it('round-trips normalized state through one household IndexedDB namespace', async () => {
+    await saveState(LEGACY_STATE_ID, {
       ...normalizeState({}),
       meals: [],
       planner: { '2026-08-17': { Dinner: ['missing'] } },
     })
 
-    const result = await loadState()
+    const result = await loadState(LEGACY_STATE_ID)
     expect(result.meals).toEqual([])
     expect(result.planner['2026-08-17'].Dinner).toEqual(['missing'])
   })
 
-  it('migrates legacy localStorage data into IndexedDB and removes the old key', async () => {
+  it('keeps household state and pending sync queues isolated', async () => {
+    const base = normalizeState({})
+    const householdA = { ...base, plannerNotes: { monday: { Dinner: 'A' } } }
+    await cacheSyncState(LEGACY_STATE_ID, {
+      workingState: householdA,
+      confirmedState: base,
+      revision: 2,
+      pendingChanges: [{
+        id: 'a-change',
+        baseState: base,
+        nextState: householdA,
+        createdAt: '2026-09-15T12:00:00.000Z',
+      }],
+    })
+
+    expect((await loadSyncState(LEGACY_STATE_ID)).pendingChanges).toHaveLength(1)
+    expect((await loadSyncState(OTHER_STATE_ID)).pendingChanges).toHaveLength(0)
+    expect((await loadState(OTHER_STATE_ID)).plannerNotes).not.toEqual(householdA.plannerNotes)
+  })
+
+  it('migrates unscoped legacy localStorage data only into the legacy household namespace', async () => {
     localStorage.setItem('meal-planner-state-v1', JSON.stringify({
       ...normalizeState({}),
       meals: [],
     }))
 
-    expect((await loadState()).meals).toEqual([])
+    expect((await loadState(OTHER_STATE_ID)).meals).toHaveLength(seedState.meals.length)
+    expect(localStorage.getItem('meal-planner-state-v1')).not.toBeNull()
+
+    expect((await loadState(LEGACY_STATE_ID)).meals).toEqual([])
     expect(localStorage.getItem('meal-planner-state-v1')).toBeNull()
-    expect((await loadState()).meals).toEqual([])
+    expect((await loadState(OTHER_STATE_ID)).meals).toHaveLength(seedState.meals.length)
   })
 
-  it('clears locally persisted state', async () => {
-    await saveState({ ...normalizeState({}), meals: [] })
-    await resetState()
-    expect((await loadState()).meals).toHaveLength(seedState.meals.length)
+  it('clears only the requested household namespace', async () => {
+    await saveState(LEGACY_STATE_ID, { ...normalizeState({}), meals: [] })
+    await saveState(OTHER_STATE_ID, { ...normalizeState({}), ingredients: [] })
+
+    await resetState(LEGACY_STATE_ID)
+
+    expect((await loadState(LEGACY_STATE_ID)).meals).toHaveLength(seedState.meals.length)
+    expect((await loadState(OTHER_STATE_ID)).ingredients).toEqual([])
   })
 })
