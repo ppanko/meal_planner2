@@ -1,38 +1,54 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseConfigured } from './supabase'
+import {
+  enrollHousehold,
+  getMyHousehold,
+  redeemHouseholdInvite,
+} from './households/api'
+import { HouseholdProvider } from './households/HouseholdContext'
+import type { HouseholdSession } from './households/types'
 
-async function checkEnrollment(session: Session | null): Promise<boolean> {
-  if (!session) return false
-
-  const { data, error } = await supabase.rpc('is_meal_planner_authorized')
-
-  if (error) {
-    console.warn('Could not check meal-planner enrollment.', error)
-    return false
-  }
-
-  return data === true
+function inviteTokenFromHash(): string | null {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  return params.get('invite')?.trim() || null
 }
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [enrolled, setEnrolled] = useState(false)
+  const [household, setHousehold] = useState<HouseholdSession | null>(null)
   const [checking, setChecking] = useState(true)
   const [accessCode, setAccessCode] = useState('')
+  const [householdName, setHouseholdName] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [joinCode, setJoinCode] = useState<string | null>(null)
+  const [continueCurrentHousehold, setContinueCurrentHousehold] = useState(false)
+  const mountedRef = useRef(true)
+  const resolutionGeneration = useRef(0)
+  const inviteToken = inviteTokenFromHash()
 
   useEffect(() => {
-    let mounted = true
+    mountedRef.current = true
 
     async function refresh(nextSession: Session | null) {
-      const isEnrolled = await checkEnrollment(nextSession)
-
-      if (!mounted) return
+      const generation = ++resolutionGeneration.current
       setSession(nextSession)
-      setEnrolled(isEnrolled)
+      setHousehold(null)
+      setChecking(true)
+
+      let resolved: HouseholdSession | null = null
+      if (nextSession) {
+        try {
+          resolved = await getMyHousehold()
+        } catch (error) {
+          console.warn('Could not check meal-planner enrollment.', error)
+        }
+      }
+
+      if (!mountedRef.current || generation !== resolutionGeneration.current) return
+      setHousehold(resolved)
       setChecking(false)
     }
 
@@ -41,14 +57,35 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void refresh(nextSession)
+      queueMicrotask(() => void refresh(nextSession))
     })
 
     return () => {
-      mounted = false
+      mountedRef.current = false
+      resolutionGeneration.current += 1
       listener.subscription.unsubscribe()
     }
   }, [])
+
+  async function ensureSession(): Promise<Session | null> {
+    if (session) return session
+
+    const { data, error } = await supabase.auth.signInAnonymously()
+    if (error) {
+      setMessage(error.message)
+      return null
+    }
+
+    setSession(data.session)
+    return data.session
+  }
+
+  function commitHousehold(activeSession: Session, nextHousehold: HouseholdSession) {
+    resolutionGeneration.current += 1
+    setSession(activeSession)
+    setHousehold(nextHousehold)
+    setChecking(false)
+  }
 
   async function enrollDevice(event: FormEvent) {
     event.preventDefault()
@@ -59,45 +96,63 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     setSubmitting(true)
     setMessage('')
 
-    let activeSession = session
-
+    const activeSession = await ensureSession()
     if (!activeSession) {
-      const { data, error } = await supabase.auth.signInAnonymously()
+      setSubmitting(false)
+      return
+    }
 
-      if (error) {
-        setSubmitting(false)
-        setMessage(error.message)
+    try {
+      const enrolled = await enrollHousehold(code)
+      if (!enrolled) {
+        setMessage('That household access code is not valid.')
         return
       }
 
-      activeSession = data.session
-      setSession(data.session)
+      setAccessCode('')
+      commitHousehold(activeSession, enrolled)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not connect this device.')
+    } finally {
+      setSubmitting(false)
     }
+  }
 
+  async function redeemInvite(event: FormEvent) {
+    event.preventDefault()
+
+    const name = householdName.trim()
+    if (!inviteToken || !name || submitting) return
+
+    setSubmitting(true)
+    setMessage('')
+
+    const activeSession = await ensureSession()
     if (!activeSession) {
       setSubmitting(false)
-      setMessage('Could not create a device session.')
       return
     }
 
-    const { data, error } = await supabase.rpc('enroll_meal_planner_device', {
-      access_code: code,
-    })
-
-    setSubmitting(false)
-
-    if (error) {
-      setMessage(error.message)
-      return
+    try {
+      const redeemed = await redeemHouseholdInvite(inviteToken, name)
+      commitHousehold(activeSession, redeemed)
+      setHouseholdName('')
+      setJoinCode(redeemed.joinCode)
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      )
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not create the household.')
+    } finally {
+      setSubmitting(false)
     }
+  }
 
-    if (data !== true) {
-      setMessage('That household access code is not valid.')
-      return
-    }
-
-    setAccessCode('')
-    setEnrolled(true)
+  async function copyJoinCode() {
+    if (!joinCode || !navigator.clipboard) return
+    await navigator.clipboard.writeText(joinCode)
   }
 
   if (!supabaseConfigured) {
@@ -123,8 +178,83 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  if (session && enrolled) {
-    return <>{children}</>
+  if (joinCode && household) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="eyebrow">HOUSEHOLD CREATED</div>
+          <h1>{household.householdName}</h1>
+          <p>
+            Save this household code. It connects another device or household
+            member to this same planner.
+          </p>
+          <div className="auth-code" aria-label="Household join code">{joinCode}</div>
+          <button className="secondary" type="button" onClick={() => void copyJoinCode()}>
+            Copy code
+          </button>
+          <button className="primary auth-submit" type="button" onClick={() => setJoinCode(null)}>
+            Open planner
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (inviteToken && household && !continueCurrentHousehold) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="eyebrow">INVITATION</div>
+          <h1>Already connected</h1>
+          <p>
+            This browser is already connected to {household.householdName}. Open
+            this invitation on an unenrolled browser or device to create the new household.
+          </p>
+          <button
+            className="primary auth-submit"
+            type="button"
+            onClick={() => setContinueCurrentHousehold(true)}
+          >
+            Continue to planner
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (session && household) {
+    return <HouseholdProvider value={household}>{children}</HouseholdProvider>
+  }
+
+  if (inviteToken) {
+    return (
+      <div className="auth-screen">
+        <form className="auth-card" onSubmit={redeemInvite}>
+          <div className="eyebrow">INVITATION</div>
+          <h1>Create household</h1>
+          <p>Name the household that will use this planner.</p>
+
+          <label>
+            Household name
+            <input
+              type="text"
+              autoComplete="organization"
+              value={householdName}
+              onChange={(event) => setHouseholdName(event.target.value)}
+              maxLength={80}
+              required
+              autoFocus
+            />
+          </label>
+
+          <button className="primary auth-submit" type="submit" disabled={submitting}>
+            {submitting ? 'Creating…' : 'Create household'}
+          </button>
+
+          {message && <div className="auth-message">{message}</div>}
+        </form>
+      </div>
+    )
   }
 
   return (
