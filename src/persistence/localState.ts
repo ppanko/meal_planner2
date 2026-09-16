@@ -113,6 +113,17 @@ async function migrateLegacyHouseholdCache(): Promise<void> {
     scopedState ??= readLocalStorage<AppState>(fallbackStateKey('household'))
     scopedSync ??= readLocalStorage<LocalSyncSnapshot>(fallbackSyncKey('household'))
 
+    if (scopedState || scopedSync) {
+      try {
+        await deleteIndexedDB([LEGACY_STATE_KEY, LEGACY_SYNC_STATE_KEY])
+      } catch {
+        // New reads use only the existing scoped cache.
+      }
+      localStorage.removeItem(LEGACY_LOCAL_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_LOCAL_SYNC_KEY)
+      return
+    }
+
     let legacyState: AppState | null = null
     let legacySync: LocalSyncSnapshot | null = null
 

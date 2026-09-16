@@ -405,7 +405,7 @@ declare
   submitted_hash text;
   legacy_household_id uuid;
 begin
-  if auth.uid() is null then
+  if auth.uid() is null or access_code is null or btrim(access_code) = '' then
     return false;
   end if;
 

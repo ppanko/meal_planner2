@@ -6,6 +6,7 @@ vi.mock('./supabase', () => ({
 }))
 
 import { seedProteinCategories, seedState } from './data'
+import { cacheState as cacheLocalState } from './persistence/localState'
 import { cacheSyncState, loadState, loadSyncState, normalizeState, resetState, saveState } from './storage'
 import { defaultShoppingCategories } from './types'
 import type { AppState } from './types'
@@ -298,6 +299,30 @@ describe('local persistence', () => {
     expect((await loadState(LEGACY_STATE_ID)).meals).toEqual([])
     expect(localStorage.getItem('meal-planner-state-v1')).toBeNull()
     expect((await loadState(OTHER_STATE_ID)).meals).toHaveLength(seedState.meals.length)
+  })
+
+  it('never mixes an unscoped pending queue into an existing scoped cache', async () => {
+    const base = normalizeState({})
+    const scoped = { ...base, plannerNotes: { monday: { Dinner: 'Scoped household' } } }
+    const obsolete = { ...base, plannerNotes: { monday: { Dinner: 'Obsolete unscoped edit' } } }
+    await cacheLocalState(LEGACY_STATE_ID, scoped)
+    localStorage.setItem('meal-planner-sync-state-v2', JSON.stringify({
+      workingState: obsolete,
+      confirmedState: base,
+      revision: 2,
+      pendingChanges: [{
+        id: 'obsolete-change',
+        baseState: base,
+        nextState: obsolete,
+        createdAt: '2026-09-15T12:00:00.000Z',
+      }],
+    }))
+
+    const loaded = await loadSyncState(LEGACY_STATE_ID)
+
+    expect(loaded.workingState.plannerNotes).toEqual(scoped.plannerNotes)
+    expect(loaded.pendingChanges).toEqual([])
+    expect(localStorage.getItem('meal-planner-sync-state-v2')).toBeNull()
   })
 
   it('clears only the requested household namespace', async () => {

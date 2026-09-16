@@ -70,7 +70,7 @@ workflow structure is asserted by `src/persistence/supabaseSetup.test.ts`.
 
 ### SEC-003 — Constrain and validate server-side state writes
 
-**Status:** Complete for single-household production; multi-household extension pending branch verification
+**Status:** Multi-household implementation verified locally; production/manual verification pending
 
 The original versioned-state RPC authenticated enrolled devices but did not
 sufficiently constrain the requested state row or JSON payload.
@@ -116,7 +116,7 @@ Completion criteria:
   household client able to read and save safely.
 - [x] Exercise migrations through repeatable PostgreSQL-compatible PGlite tests.
 - [x] Document the rollout and recovery procedure without including credentials.
-- [ ] Verify the multi-household expansion migration and frontend with the full
+- [x] Verify the multi-household expansion migration and frontend with the full
   local/CI test, typecheck, coverage, and build suite.
 - [ ] Deploy and verify the household-aware expansion while the database remains
   `versioned_sync = 'expand'`.

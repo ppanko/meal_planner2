@@ -178,6 +178,14 @@ it('executes fresh setup with household-scoped RPC state and no direct write bri
       await db.query('insert into auth.users (id) values ($1)', [userId])
     }
 
+    const bootstrapHashes = await db.query<{ access_hash: string; household_hash: string }>(`
+      select access.code_hash as access_hash, household.code_hash as household_hash
+      from public.meal_planner_access access
+      join public.meal_planner_households household on household.state_id = access.id
+      where access.id = 'household'
+    `)
+    expect(bootstrapHashes.rows[0].household_hash).toBe(bootstrapHashes.rows[0].access_hash)
+
     const phase = await db.query<{ phase: string }>(`
       select phase from public.meal_planner_release_state where id = 'versioned_sync'
     `)
@@ -203,6 +211,15 @@ it('executes fresh setup with household-scoped RPC state and no direct write bri
     `)
     expect(rls.rows).toHaveLength(4)
     expect(rls.rows.every((row) => row.relrowsecurity)).toBe(true)
+
+    await setUser(db, users.replay)
+    await expect(db.query('select * from public.meal_planner_households'))
+      .rejects.toThrow(/permission denied/)
+    const nullLegacyEnrollment = await db.query<{ enrolled: boolean }>(`
+      select public.enroll_meal_planner_device(null) as enrolled
+    `)
+    expect(nullLegacyEnrollment.rows[0]).toEqual({ enrolled: false })
+    await clearUser(db)
 
     await db.query(`
       insert into public.meal_planner_households (id, state_id, name, code_hash)
@@ -289,6 +306,10 @@ it('migrates the legacy household while isolating invited households and stale c
     `)
     expect(afterLegacyWrite.rows[0]).toEqual({ revision: 1 })
 
+    await setUser(db, users.invited)
+    await expect(db.query('select * from public.create_meal_planner_invite()'))
+      .rejects.toThrow('Not authorized')
+
     await db.exec('reset role')
     await db.query('insert into public.meal_planner_admins (user_id) values ($1)', [users.legacy])
     await setUser(db, users.legacy)
@@ -296,6 +317,90 @@ it('migrates the legacy household while isolating invited households and stale c
       select invite_token from public.create_meal_planner_invite()
     `)
     expect(invite.rows[0]?.invite_token).toMatch(/^[a-f0-9]{64}$/)
+    const invalidStateInvite = await db.query<{ invite_token: string }>(`
+      select invite_token from public.create_meal_planner_invite()
+    `)
+    const invalidNameInvite = await db.query<{ invite_token: string }>(`
+      select invite_token from public.create_meal_planner_invite()
+    `)
+    const expiredInvite = await db.query<{ invite_token: string }>(`
+      select invite_token from public.create_meal_planner_invite()
+    `)
+    const lateFailureInvite = await db.query<{ invite_token: string }>(`
+      select invite_token from public.create_meal_planner_invite()
+    `)
+
+    await db.exec('reset role')
+    const storedInvite = await db.query<{
+      token_hash: string
+      expected_hash: string
+      lifetime_seconds: number
+    }>(`
+      select
+        token_hash,
+        encode(extensions.digest($1, 'sha256'), 'hex') as expected_hash,
+        extract(epoch from (expires_at - created_at))::int as lifetime_seconds
+      from public.meal_planner_invites
+      where token_hash = encode(extensions.digest($1, 'sha256'), 'hex')
+    `, [invite.rows[0].invite_token])
+    expect(storedInvite.rows[0].token_hash).toBe(storedInvite.rows[0].expected_hash)
+    expect(storedInvite.rows[0].token_hash).not.toBe(invite.rows[0].invite_token)
+    expect(storedInvite.rows[0].lifetime_seconds).toBe(7 * 24 * 60 * 60)
+    await db.query(`
+      update public.meal_planner_invites
+      set expires_at = now() - interval '1 minute'
+      where token_hash = encode(extensions.digest($1, 'sha256'), 'hex')
+    `, [expiredInvite.rows[0].invite_token])
+
+    await setUser(db, users.invited)
+    await expect(db.query(`
+      select * from public.redeem_meal_planner_invite($1, 'Invalid state', '{}'::jsonb)
+    `, [invalidStateInvite.rows[0].invite_token])).rejects.toThrow('Invalid shared state payload')
+    await expect(db.query(`
+      select * from public.redeem_meal_planner_invite($1, $2, $3::jsonb)
+    `, [invalidNameInvite.rows[0].invite_token, 'Invalid\nname', JSON.stringify(validState)]))
+      .rejects.toThrow('Invalid household name')
+    await expect(db.query(`
+      select * from public.redeem_meal_planner_invite($1, 'Expired', $2::jsonb)
+    `, [expiredInvite.rows[0].invite_token, JSON.stringify(validState)]))
+      .rejects.toThrow('Invitation is invalid, expired, or already used')
+
+    await db.exec('reset role')
+    await db.exec(`
+      create function public.fail_new_household_state_for_test()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if new.id <> 'household' then
+          raise exception 'Injected late state insert failure';
+        end if;
+        return new;
+      end;
+      $$;
+
+      create trigger fail_new_household_state_for_test
+      before insert on public.meal_planner_state
+      for each row execute function public.fail_new_household_state_for_test();
+    `)
+    await setUser(db, users.invited)
+    await expect(db.query(`
+      select * from public.redeem_meal_planner_invite($1, 'Must roll back', $2::jsonb)
+    `, [lateFailureInvite.rows[0].invite_token, JSON.stringify(validState)]))
+      .rejects.toThrow('Injected late state insert failure')
+    await db.exec('reset role')
+    await db.exec(`
+      drop trigger fail_new_household_state_for_test on public.meal_planner_state;
+      drop function public.fail_new_household_state_for_test();
+    `)
+
+    const failedRedemptions = await db.query<{ households: number; members: number; redeemed: number }>(`
+      select
+        (select count(*)::int from public.meal_planner_households) as households,
+        (select count(*)::int from public.meal_planner_members) as members,
+        (select count(*)::int from public.meal_planner_invites where redeemed_at is not null) as redeemed
+    `)
+    expect(failedRedemptions.rows[0]).toEqual({ households: 1, members: 1, redeemed: 0 })
 
     await setUser(db, users.invited)
     const redeemed = await db.query<{
@@ -340,6 +445,43 @@ it('migrates the legacy household while isolating invited households and stale c
       from public.save_meal_planner_state($1, $2::jsonb, 1, $3)
     `, [redeemed.rows[0].state_id, JSON.stringify({ ...validState, plannerNotes: { monday: 'own' } }), invitedMutation])
     expect(ownSave.rows[0]).toEqual({ status: 'saved', revision: 2 })
+    const replayedSave = await db.query<{ status: string; revision: number }>(`
+      select status, revision
+      from public.save_meal_planner_state($1, $2::jsonb, 1, $3)
+    `, [redeemed.rows[0].state_id, JSON.stringify({ ...validState, plannerNotes: { monday: 'own' } }), invitedMutation])
+    expect(replayedSave.rows[0]).toEqual({ status: 'saved', revision: 2 })
+    const conflictedSave = await db.query<{ status: string; revision: number }>(`
+      select status, revision
+      from public.save_meal_planner_state($1, $2::jsonb, 1, $3)
+    `, [
+      redeemed.rows[0].state_id,
+      JSON.stringify({ ...validState, plannerNotes: { monday: 'conflict' } }),
+      '20000000-0000-4000-8000-000000000012',
+    ])
+    expect(conflictedSave.rows[0]).toEqual({ status: 'conflict', revision: 2 })
+
+    await expect(db.query(`
+      select * from public.enroll_meal_planner_household('legacy-code')
+    `)).rejects.toThrow('This user already belongs to another household')
+    await expect(db.query(`
+      select * from public.redeem_meal_planner_invite($1, 'Another', $2::jsonb)
+    `, [invalidNameInvite.rows[0].invite_token, JSON.stringify(validState)]))
+      .rejects.toThrow('This user already belongs to a household')
+
+    await setUser(db, users.legacy)
+    const invitedRowsVisible = await db.query<{ count: number }>(`
+      select count(*)::int as count
+      from public.meal_planner_state
+      where id = $1
+    `, [redeemed.rows[0].state_id])
+    expect(invitedRowsVisible.rows[0]).toEqual({ count: 0 })
+    await expect(db.query(`
+      select status from public.save_meal_planner_state($1, $2::jsonb, 2, $3)
+    `, [
+      redeemed.rows[0].state_id,
+      JSON.stringify(validState),
+      '20000000-0000-4000-8000-000000000013',
+    ])).rejects.toThrow('Not authorized')
 
     await setUser(db, users.replay)
     await expect(db.query(`
@@ -358,6 +500,16 @@ it('migrates the legacy household while isolating invited households and stale c
     })
 
     await setUser(db, users.replay)
+    const nullLegacyEnrollment = await db.query<{ enrolled: boolean }>(`
+      select public.enroll_meal_planner_device(null) as enrolled
+    `)
+    expect(nullLegacyEnrollment.rows[0]).toEqual({ enrolled: false })
+    const householdBeforeValidCode = await db.query<{ count: number }>(`
+      select count(*)::int as count
+      from public.get_my_meal_planner_household()
+    `)
+    expect(householdBeforeValidCode.rows[0]).toEqual({ count: 0 })
+
     const legacyEnrolled = await db.query<{ enrolled: boolean }>(`
       select public.enroll_meal_planner_device('legacy-code') as enrolled
     `)
@@ -366,18 +518,6 @@ it('migrates the legacy household while isolating invited households and stale c
       select state_id from public.get_my_meal_planner_household()
     `)
     expect(replayHousehold.rows[0]).toEqual({ state_id: 'household' })
-
-    await setUser(db, users.legacy)
-    const secondInvite = await db.query<{ invite_token: string }>(`
-      select invite_token from public.create_meal_planner_invite()
-    `)
-    await db.exec('reset role')
-    await db.query(`
-      update public.meal_planner_invites
-      set expires_at = now() - interval '1 minute'
-      where token_hash = encode(extensions.digest($1, 'sha256'), 'hex')
-    `, [secondInvite.rows[0].invite_token])
-    await setUser(db, '10000000-0000-4000-8000-000000000005').catch(() => undefined)
 
     const directPolicies = await db.query<{ count: number }>(`
       select count(*)::int as count

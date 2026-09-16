@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,6 +31,12 @@ vi.mock('./households/api', () => ({
 }))
 
 import AuthGate from './AuthGate'
+import { useHouseholdSession } from './households/HouseholdContext'
+
+function HouseholdChild() {
+  const { householdName } = useHouseholdSession()
+  return <div>Private app for {householdName}</div>
+}
 
 const session1 = { user: { id: 'user-1' } }
 const session2 = { user: { id: 'user-2' } }
@@ -78,7 +84,7 @@ describe('AuthGate', () => {
   it('enrolls a new anonymous device into the household resolved by its join code', async () => {
     mocks.enrollHousehold.mockResolvedValue(household2)
     const user = userEvent.setup()
-    render(<AuthGate><div>Private app</div></AuthGate>)
+    render(<AuthGate><HouseholdChild /></AuthGate>)
 
     const input = await screen.findByLabelText('Household code')
     await user.type(input, '  secret-code  ')
@@ -86,12 +92,12 @@ describe('AuthGate', () => {
 
     await waitFor(() => expect(mocks.signInAnonymously).toHaveBeenCalled())
     expect(mocks.enrollHousehold).toHaveBeenCalledWith('secret-code')
-    expect(await screen.findByText('Private app')).toBeInTheDocument()
+    expect(await screen.findByText('Private app for Second home')).toBeInTheDocument()
   })
 
   it('shows validation feedback for an invalid household code', async () => {
     const user = userEvent.setup()
-    render(<AuthGate><div>Private app</div></AuthGate>)
+    render(<AuthGate><HouseholdChild /></AuthGate>)
 
     await user.type(await screen.findByLabelText('Household code'), 'wrong')
     await user.click(screen.getByRole('button', { name: 'Connect this device' }))
@@ -105,7 +111,7 @@ describe('AuthGate', () => {
       error: { message: 'Anonymous sign-in disabled' },
     })
     const user = userEvent.setup()
-    render(<AuthGate><div>Private app</div></AuthGate>)
+    render(<AuthGate><HouseholdChild /></AuthGate>)
 
     await user.type(await screen.findByLabelText('Household code'), 'secret')
     await user.click(screen.getByRole('button', { name: 'Connect this device' }))
@@ -131,18 +137,59 @@ describe('AuthGate', () => {
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
 
-    render(<AuthGate><div>Private app</div></AuthGate>)
+    render(<AuthGate><HouseholdChild /></AuthGate>)
     await waitFor(() => expect(mocks.getMyHousehold).toHaveBeenCalledTimes(1))
 
     act(() => mocks.authListener?.('SIGNED_IN', session2))
     await waitFor(() => expect(mocks.getMyHousehold).toHaveBeenCalledTimes(2))
 
     await act(async () => { resolveSecond?.(household2) })
-    expect(await screen.findByText('Private app')).toBeInTheDocument()
+    expect(await screen.findByText('Private app for Second home')).toBeInTheDocument()
 
     await act(async () => { resolveFirst?.(household1) })
-    expect(screen.getByText('Private app')).toBeInTheDocument()
+    expect(screen.getByText('Private app for Second home')).toBeInTheDocument()
     expect(mocks.getMyHousehold).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores a late initial session result after a newer auth event', async () => {
+    let resolveInitialSession: ((value: { data: { session: typeof session1 } }) => void) | undefined
+    mocks.getSession.mockImplementation(() => new Promise((resolve) => {
+      resolveInitialSession = resolve
+    }))
+    mocks.getMyHousehold
+      .mockResolvedValueOnce(household2)
+      .mockResolvedValueOnce(household1)
+
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByText('Private app for Second home')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveInitialSession?.({ data: { session: session1 } })
+    })
+
+    expect(screen.getByText('Private app for Second home')).toBeInTheDocument()
+    expect(mocks.getMyHousehold).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not commit enrollment after the authenticated user changes', async () => {
+    let resolveEnrollment: ((value: typeof household1) => void) | undefined
+    mocks.enrollHousehold.mockImplementation(() => new Promise((resolve) => {
+      resolveEnrollment = resolve
+    }))
+    mocks.getMyHousehold.mockResolvedValue(household2)
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household code'), 'secret-code')
+    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
+    await waitFor(() => expect(mocks.enrollHousehold).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByText('Private app for Second home')).toBeInTheDocument()
+
+    await act(async () => { resolveEnrollment?.(household1) })
+    expect(screen.getByText('Private app for Second home')).toBeInTheDocument()
   })
 
   it('redeems an invite for an unenrolled anonymous browser and shows the join code once', async () => {
@@ -163,6 +210,23 @@ describe('AuthGate', () => {
     expect(await screen.findByText('Private app')).toBeInTheDocument()
   })
 
+  it('does not expose a redeemed household join code after the authenticated user changes', async () => {
+    window.location.hash = 'invite=invite-token'
+    mocks.redeemHouseholdInvite.mockResolvedValue({ ...household2, joinCode: 'join-code-123' })
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household name'), 'Second home')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    expect(await screen.findByLabelText('Household join code')).toHaveTextContent('join-code-123')
+
+    mocks.getMyHousehold.mockResolvedValue(household1)
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Household join code')).not.toBeInTheDocument()
+  })
+
   it('keeps an invalid invite fragment for retry and shows the server error', async () => {
     window.location.hash = 'invite=bad-token'
     mocks.redeemHouseholdInvite.mockRejectedValue(new Error('Invitation is invalid, expired, or already used'))
@@ -174,6 +238,38 @@ describe('AuthGate', () => {
 
     expect(await screen.findByText('Invitation is invalid, expired, or already used')).toBeInTheDocument()
     expect(window.location.hash).toBe('#invite=bad-token')
+  })
+
+  it('rejects control characters in household names before redemption', async () => {
+    window.location.hash = 'invite=invite-token'
+    const user = userEvent.setup()
+    render(<AuthGate><div>Private app</div></AuthGate>)
+
+    fireEvent.change(await screen.findByLabelText('Household name'), {
+      target: { value: 'Unsafe\u0007name' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+
+    expect(await screen.findByText('Enter a household name without control characters.'))
+      .toBeInTheDocument()
+    expect(mocks.signInAnonymously).not.toHaveBeenCalled()
+    expect(mocks.redeemHouseholdInvite).not.toHaveBeenCalled()
+  })
+
+  it('counts Unicode code points for the household name limit', async () => {
+    window.location.hash = 'invite=invite-token'
+    const validUnicodeName = '🏠'.repeat(50)
+    mocks.redeemHouseholdInvite.mockResolvedValue({ ...household2, joinCode: 'join-code-123' })
+    const user = userEvent.setup()
+    render(<AuthGate><div>Private app</div></AuthGate>)
+
+    fireEvent.change(await screen.findByLabelText('Household name'), {
+      target: { value: validUnicodeName },
+    })
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+
+    await waitFor(() => expect(mocks.redeemHouseholdInvite)
+      .toHaveBeenCalledWith('invite-token', validUnicodeName))
   })
 
   it('does not redeem an invite on a browser already connected to a household', async () => {
@@ -188,5 +284,23 @@ describe('AuthGate', () => {
     await user.click(screen.getByRole('button', { name: 'Continue to planner' }))
     expect(await screen.findByText('Private app')).toBeInTheDocument()
     expect(window.location.hash).toBe('#invite=other-token')
+  })
+
+  it('requires a fresh invitation acknowledgement after the authenticated user changes', async () => {
+    window.location.hash = 'invite=other-token'
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.getMyHousehold.mockResolvedValue(household1)
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    expect(await screen.findByText('Already connected')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Continue to planner' }))
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+
+    mocks.getMyHousehold.mockResolvedValue(household2)
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+
+    expect(await screen.findByText('Already connected')).toBeInTheDocument()
+    expect(screen.queryByText('Private app for Second home')).not.toBeInTheDocument()
   })
 })

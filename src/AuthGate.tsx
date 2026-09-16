@@ -15,6 +15,8 @@ function inviteTokenFromHash(): string | null {
   return params.get('invite')?.trim() || null
 }
 
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/
+
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [household, setHousehold] = useState<HouseholdSession | null>(null)
@@ -27,13 +29,23 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [continueCurrentHousehold, setContinueCurrentHousehold] = useState(false)
   const mountedRef = useRef(true)
   const resolutionGeneration = useRef(0)
+  const activeSessionRef = useRef<Session | null>(null)
   const inviteToken = inviteTokenFromHash()
 
   useEffect(() => {
     mountedRef.current = true
 
-    async function refresh(nextSession: Session | null) {
-      const generation = ++resolutionGeneration.current
+    async function refresh(
+      nextSession: Session | null,
+      generation: number,
+      identityChanged = false,
+    ) {
+      if (!mountedRef.current || generation !== resolutionGeneration.current) return
+      if (identityChanged) {
+        setJoinCode(null)
+        setContinueCurrentHousehold(false)
+      }
+      activeSessionRef.current = nextSession
       setSession(nextSession)
       setHousehold(null)
       setChecking(true)
@@ -52,23 +64,33 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       setChecking(false)
     }
 
+    const initialGeneration = ++resolutionGeneration.current
     void supabase.auth.getSession().then(({ data }) => {
-      void refresh(data.session)
+      void refresh(data.session, initialGeneration)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      queueMicrotask(() => void refresh(nextSession))
+      const previousUserId = activeSessionRef.current?.user.id ?? null
+      const nextUserId = nextSession?.user.id ?? null
+      const identityChanged = previousUserId !== nextUserId
+      const generation = ++resolutionGeneration.current
+      activeSessionRef.current = nextSession
+      queueMicrotask(() => void refresh(nextSession, generation, identityChanged))
     })
 
     return () => {
       mountedRef.current = false
       resolutionGeneration.current += 1
+      activeSessionRef.current = null
       listener.subscription.unsubscribe()
     }
   }, [])
 
   async function ensureSession(): Promise<Session | null> {
-    if (session) return session
+    const existingSession = activeSessionRef.current
+    if (existingSession) return existingSession
+
+    const generation = resolutionGeneration.current
 
     const { data, error } = await supabase.auth.signInAnonymously()
     if (error) {
@@ -76,15 +98,31 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return null
     }
 
-    setSession(data.session)
-    return data.session
+    const signedInSession = data.session
+    if (!signedInSession) return null
+
+    const currentSession = activeSessionRef.current
+    if (
+      resolutionGeneration.current !== generation
+      && currentSession?.user.id !== signedInSession.user.id
+    ) return null
+
+    if (!currentSession) {
+      activeSessionRef.current = signedInSession
+      setSession(signedInSession)
+    }
+    return activeSessionRef.current
   }
 
-  function commitHousehold(activeSession: Session, nextHousehold: HouseholdSession) {
+  function commitHousehold(activeSession: Session, nextHousehold: HouseholdSession): boolean {
+    const currentSession = activeSessionRef.current
+    if (currentSession?.user.id !== activeSession.user.id) return false
+
     resolutionGeneration.current += 1
-    setSession(activeSession)
+    setSession(currentSession)
     setHousehold(nextHousehold)
     setChecking(false)
+    return true
   }
 
   async function enrollDevice(event: FormEvent) {
@@ -123,6 +161,14 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
     const name = householdName.trim()
     if (!inviteToken || !name || submitting) return
+    if ([...name].length > 80) {
+      setMessage('Household name must be 80 characters or fewer.')
+      return
+    }
+    if (CONTROL_CHARACTER_PATTERN.test(name)) {
+      setMessage('Enter a household name without control characters.')
+      return
+    }
 
     setSubmitting(true)
     setMessage('')
@@ -135,7 +181,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
     try {
       const redeemed = await redeemHouseholdInvite(inviteToken, name)
-      commitHousehold(activeSession, redeemed)
+      if (!commitHousehold(activeSession, redeemed)) return
       setHouseholdName('')
       setJoinCode(redeemed.joinCode)
       window.history.replaceState(
@@ -241,7 +287,6 @@ export default function AuthGate({ children }: { children: ReactNode }) {
               autoComplete="organization"
               value={householdName}
               onChange={(event) => setHouseholdName(event.target.value)}
-              maxLength={80}
               required
               autoFocus
             />

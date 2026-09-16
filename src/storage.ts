@@ -38,9 +38,9 @@ export async function loadSyncState(stateId: string): Promise<LoadedSyncState> {
     const state = localSync?.workingState ?? local
     const loaded: LoadedSyncState = {
       workingState: state,
-      confirmedState: state,
+      confirmedState: localSync?.confirmedState ?? state,
       revision: localSync?.revision ?? 0,
-      pendingChanges: [],
+      pendingChanges: localSync?.pendingChanges ?? [],
       remoteAvailable: true,
     }
     await cacheLocalSyncSnapshot(stateId, loaded)

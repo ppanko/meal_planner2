@@ -66,7 +66,7 @@ Only the designated admin sees **Invite household** in the app.
 2. Select **Create invite**.
 3. Copy the one-time link and send it using your normal email or messaging app.
 4. The recipient opens it on an unenrolled browser/device and enters a household name.
-5. The app creates an isolated planner and shows that household's join code once.
+5. The app creates an isolated planner and shows its household-specific join code once.
 
 The app does not send or store the recipient's email. Invitation links expire after seven days and can be redeemed once.
 

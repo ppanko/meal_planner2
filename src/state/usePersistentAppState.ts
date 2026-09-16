@@ -202,14 +202,15 @@ export function usePersistentAppState() {
         void persistSession()
       }
     } finally {
-      syncingRef.current = false
-      if (
-        isActiveNamespace(namespace)
-        && pendingRef.current.length > 0
-        && !conflictRef.current
-        && syncStatusRef.current === 'saving'
-      ) {
-        queueMicrotask(() => void syncPendingChanges())
+      if (isActiveNamespace(namespace)) {
+        syncingRef.current = false
+        if (
+          pendingRef.current.length > 0
+          && !conflictRef.current
+          && syncStatusRef.current === 'saving'
+        ) {
+          queueMicrotask(() => void syncPendingChanges())
+        }
       }
     }
   }
@@ -255,8 +256,13 @@ export function usePersistentAppState() {
     conflictRef.current = null
     queuedRemoteRef.current = null
     cacheQueueRef.current = Promise.resolve()
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+    }
     setState(null)
     setStorageReady(false)
+    setUndoAction(null)
     setSyncConflict(null)
     setConflictVisible(false)
     setSyncStatus('saved')
