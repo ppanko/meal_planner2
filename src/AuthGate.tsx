@@ -30,23 +30,18 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true)
   const resolutionGeneration = useRef(0)
   const activeSessionRef = useRef<Session | null>(null)
+  const householdRef = useRef<HouseholdSession | null>(null)
+  const submissionGenerationRef = useRef(0)
   const inviteToken = inviteTokenFromHash()
 
   useEffect(() => {
     mountedRef.current = true
 
-    async function refresh(
-      nextSession: Session | null,
-      generation: number,
-      identityChanged = false,
-    ) {
+    async function refresh(nextSession: Session | null, generation: number) {
       if (!mountedRef.current || generation !== resolutionGeneration.current) return
-      if (identityChanged) {
-        setJoinCode(null)
-        setContinueCurrentHousehold(false)
-      }
       activeSessionRef.current = nextSession
       setSession(nextSession)
+      householdRef.current = null
       setHousehold(null)
       setChecking(true)
 
@@ -60,8 +55,25 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       }
 
       if (!mountedRef.current || generation !== resolutionGeneration.current) return
+      householdRef.current = resolved
       setHousehold(resolved)
       setChecking(false)
+    }
+
+    async function revalidate(nextSession: Session, generation: number) {
+      if (!mountedRef.current || generation !== resolutionGeneration.current) return
+      activeSessionRef.current = nextSession
+      setSession(nextSession)
+
+      try {
+        const resolved = await getMyHousehold()
+        if (!mountedRef.current || generation !== resolutionGeneration.current) return
+        householdRef.current = resolved
+        setHousehold(resolved)
+      } catch (error) {
+        if (!mountedRef.current || generation !== resolutionGeneration.current) return
+        console.warn('Could not revalidate meal-planner enrollment.', error)
+      }
     }
 
     const initialGeneration = ++resolutionGeneration.current
@@ -74,14 +86,35 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       const nextUserId = nextSession?.user.id ?? null
       const identityChanged = previousUserId !== nextUserId
       const generation = ++resolutionGeneration.current
+      if (identityChanged) {
+        householdRef.current = null
+        setHousehold(null)
+        setChecking(true)
+        setAccessCode('')
+        setHouseholdName('')
+        setMessage('')
+        setJoinCode(null)
+        setContinueCurrentHousehold(false)
+        if (previousUserId !== null) {
+          submissionGenerationRef.current += 1
+          setSubmitting(false)
+        }
+      }
+      const hasResolvedHousehold = householdRef.current !== null
       activeSessionRef.current = nextSession
-      queueMicrotask(() => void refresh(nextSession, generation, identityChanged))
+      if (!identityChanged && nextSession && hasResolvedHousehold) {
+        queueMicrotask(() => void revalidate(nextSession, generation))
+      } else {
+        queueMicrotask(() => void refresh(nextSession, generation))
+      }
     })
 
     return () => {
       mountedRef.current = false
       resolutionGeneration.current += 1
+      submissionGenerationRef.current += 1
       activeSessionRef.current = null
+      householdRef.current = null
       listener.subscription.unsubscribe()
     }
   }, [])
@@ -94,7 +127,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
     const { data, error } = await supabase.auth.signInAnonymously()
     if (error) {
-      setMessage(error.message)
+      if (
+        resolutionGeneration.current === generation
+        && activeSessionRef.current === null
+      ) setMessage(error.message)
       return null
     }
 
@@ -120,9 +156,19 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
     resolutionGeneration.current += 1
     setSession(currentSession)
+    householdRef.current = nextHousehold
     setHousehold(nextHousehold)
     setChecking(false)
     return true
+  }
+
+  function isActiveIdentity(candidateSession: Session): boolean {
+    return activeSessionRef.current?.user.id === candidateSession.user.id
+  }
+
+  function isActiveSubmission(generation: number, candidateSession: Session): boolean {
+    return submissionGenerationRef.current === generation
+      && isActiveIdentity(candidateSession)
   }
 
   async function enrollDevice(event: FormEvent) {
@@ -131,17 +177,20 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     const code = accessCode.trim()
     if (!code || submitting) return
 
+    const submissionGeneration = ++submissionGenerationRef.current
     setSubmitting(true)
     setMessage('')
 
     const activeSession = await ensureSession()
     if (!activeSession) {
-      setSubmitting(false)
+      if (submissionGenerationRef.current === submissionGeneration) setSubmitting(false)
       return
     }
+    if (!isActiveSubmission(submissionGeneration, activeSession)) return
 
     try {
       const enrolled = await enrollHousehold(code)
+      if (!isActiveSubmission(submissionGeneration, activeSession)) return
       if (!enrolled) {
         setMessage('That household access code is not valid.')
         return
@@ -150,9 +199,11 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       setAccessCode('')
       commitHousehold(activeSession, enrolled)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not connect this device.')
+      if (isActiveSubmission(submissionGeneration, activeSession)) {
+        setMessage(error instanceof Error ? error.message : 'Could not connect this device.')
+      }
     } finally {
-      setSubmitting(false)
+      if (isActiveSubmission(submissionGeneration, activeSession)) setSubmitting(false)
     }
   }
 
@@ -170,17 +221,20 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return
     }
 
+    const submissionGeneration = ++submissionGenerationRef.current
     setSubmitting(true)
     setMessage('')
 
     const activeSession = await ensureSession()
     if (!activeSession) {
-      setSubmitting(false)
+      if (submissionGenerationRef.current === submissionGeneration) setSubmitting(false)
       return
     }
+    if (!isActiveSubmission(submissionGeneration, activeSession)) return
 
     try {
       const redeemed = await redeemHouseholdInvite(inviteToken, name)
+      if (!isActiveSubmission(submissionGeneration, activeSession)) return
       if (!commitHousehold(activeSession, redeemed)) return
       setHouseholdName('')
       setJoinCode(redeemed.joinCode)
@@ -190,9 +244,11 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         `${window.location.pathname}${window.location.search}`,
       )
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not create the household.')
+      if (isActiveSubmission(submissionGeneration, activeSession)) {
+        setMessage(error instanceof Error ? error.message : 'Could not create the household.')
+      }
     } finally {
-      setSubmitting(false)
+      if (isActiveSubmission(submissionGeneration, activeSession)) setSubmitting(false)
     }
   }
 

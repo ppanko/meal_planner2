@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -33,8 +34,9 @@ vi.mock('./households/api', () => ({
 import AuthGate from './AuthGate'
 import { useHouseholdSession } from './households/HouseholdContext'
 
-function HouseholdChild() {
+function HouseholdChild({ onUnmount }: { onUnmount?: () => void }) {
   const { householdName } = useHouseholdSession()
+  useEffect(() => () => onUnmount?.(), [onUnmount])
   return <div>Private app for {householdName}</div>
 }
 
@@ -170,6 +172,305 @@ describe('AuthGate', () => {
 
     expect(screen.getByText('Private app for Second home')).toBeInTheDocument()
     expect(mocks.getMyHousehold).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the authenticated app mounted while same-user token revalidation is delayed', async () => {
+    let resolveRefresh: ((value: typeof household1) => void) | undefined
+    const onUnmount = vi.fn()
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.getMyHousehold
+      .mockResolvedValueOnce(household1)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve }))
+
+    render(<AuthGate><HouseholdChild onUnmount={onUnmount} /></AuthGate>)
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+
+    act(() => mocks.authListener?.('TOKEN_REFRESHED', { ...session1 }))
+    await waitFor(() => expect(mocks.getMyHousehold).toHaveBeenCalledTimes(2))
+
+    expect(screen.getByText('Private app for Home')).toBeInTheDocument()
+    expect(screen.queryByText('Opening Meal Planner…')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    expect(onUnmount).not.toHaveBeenCalled()
+
+    await act(async () => { resolveRefresh?.(household1) })
+    expect(screen.getByText('Private app for Home')).toBeInTheDocument()
+    expect(onUnmount).not.toHaveBeenCalled()
+  })
+
+  it('keeps the authenticated app mounted when same-user token revalidation fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const onUnmount = vi.fn()
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.getMyHousehold
+      .mockResolvedValueOnce(household1)
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+
+    render(<AuthGate><HouseholdChild onUnmount={onUnmount} /></AuthGate>)
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+
+    act(() => mocks.authListener?.('TOKEN_REFRESHED', { ...session1 }))
+    await waitFor(() => expect(warn)
+      .toHaveBeenCalledWith('Could not revalidate meal-planner enrollment.', expect.any(Error)))
+
+    expect(screen.getByText('Private app for Home')).toBeInTheDocument()
+    expect(screen.queryByText('Opening Meal Planner…')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    expect(onUnmount).not.toHaveBeenCalled()
+  })
+
+  it('clears the old household immediately while a changed user is resolving', async () => {
+    let resolveNextHousehold: ((value: typeof household2) => void) | undefined
+    const onUnmount = vi.fn()
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.getMyHousehold
+      .mockResolvedValueOnce(household1)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNextHousehold = resolve }))
+
+    render(<AuthGate><HouseholdChild onUnmount={onUnmount} /></AuthGate>)
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+
+    expect(await screen.findByText('Opening Meal Planner…')).toBeInTheDocument()
+    expect(screen.queryByText('Private app for Home')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Household code')).not.toBeInTheDocument()
+    expect(onUnmount).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolveNextHousehold?.(household2) })
+    expect(await screen.findByText('Private app for Second home')).toBeInTheDocument()
+  })
+
+  it('does not let a back-to-back same-user event retain the previous user household', async () => {
+    let rejectNextHousehold: ((reason: Error) => void) | undefined
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.getMyHousehold
+      .mockResolvedValueOnce(household1)
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectNextHousehold = reject
+      }))
+
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+    expect(await screen.findByText('Private app for Home')).toBeInTheDocument()
+
+    act(() => {
+      mocks.authListener?.('SIGNED_IN', session2)
+      mocks.authListener?.('TOKEN_REFRESHED', { ...session2 })
+    })
+    await waitFor(() => expect(mocks.getMyHousehold).toHaveBeenCalledTimes(2))
+
+    expect(screen.queryByText('Private app for Home')).not.toBeInTheDocument()
+    expect(screen.getByText('Opening Meal Planner…')).toBeInTheDocument()
+
+    await act(async () => { rejectNextHousehold?.(new Error('temporary network failure')) })
+    expect(await screen.findByLabelText('Household code')).toBeInTheDocument()
+    expect(screen.queryByText('Private app for Home')).not.toBeInTheDocument()
+    expect(warn).toHaveBeenCalledWith(
+      'Could not check meal-planner enrollment.',
+      expect.any(Error),
+    )
+  })
+
+  it('clears stale enrollment fields and feedback when the authenticated user changes', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    const codeInput = await screen.findByLabelText('Household code')
+    await user.type(codeInput, 'old-user-code')
+    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
+    expect(await screen.findByText('That household access code is not valid.')).toBeInTheDocument()
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    const nextCodeInput = await screen.findByLabelText('Household code')
+
+    expect(nextCodeInput).toHaveValue('')
+    expect(screen.queryByText('That household access code is not valid.')).not.toBeInTheDocument()
+  })
+
+  it('clears a stale invite name and error when the authenticated user changes', async () => {
+    window.location.hash = 'invite=invite-token'
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.redeemHouseholdInvite.mockRejectedValue(new Error('Old user invitation error'))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    const nameInput = await screen.findByLabelText('Household name')
+    await user.type(nameInput, 'Old household')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    expect(await screen.findByText('Old user invitation error')).toBeInTheDocument()
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    const nextNameInput = await screen.findByLabelText('Household name')
+
+    expect(nextNameInput).toHaveValue('')
+    expect(screen.queryByText('Old user invitation error')).not.toBeInTheDocument()
+  })
+
+  it('keeps an invite submission pending across its anonymous sign-in auth event', async () => {
+    let resolveSignIn: ((value: { data: { session: typeof session1 }; error: null }) => void) | undefined
+    window.location.hash = 'invite=invite-token'
+    mocks.signInAnonymously.mockImplementation(() => new Promise((resolve) => {
+      resolveSignIn = resolve
+    }))
+    mocks.redeemHouseholdInvite.mockResolvedValue({ ...household2, joinCode: 'join-code-123' })
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household name'), 'New household')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    await waitFor(() => expect(mocks.signInAnonymously).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session1))
+
+    expect(await screen.findByRole('button', { name: 'Creating…' })).toBeDisabled()
+
+    await act(async () => {
+      resolveSignIn?.({ data: { session: session1 }, error: null })
+    })
+    expect(await screen.findByLabelText('Household join code')).toHaveTextContent('join-code-123')
+  })
+
+  it('ignores a late anonymous sign-in error after another user becomes active', async () => {
+    let resolveSignIn: ((value: {
+      data: { session: null }
+      error: { message: string }
+    }) => void) | undefined
+    mocks.signInAnonymously.mockImplementation(() => new Promise((resolve) => {
+      resolveSignIn = resolve
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household code'), 'old-user-code')
+    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
+    await waitFor(() => expect(mocks.signInAnonymously).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByLabelText('Household code')).toHaveValue('')
+
+    await act(async () => {
+      resolveSignIn?.({ data: { session: null }, error: { message: 'Old sign-in error' } })
+    })
+    expect(screen.queryByText('Old sign-in error')).not.toBeInTheDocument()
+  })
+
+  it('does not enroll after a delayed sign-in crosses an A-to-B-to-A identity change', async () => {
+    let resolveSignIn: ((value: { data: { session: typeof session1 }; error: null }) => void) | undefined
+    mocks.signInAnonymously.mockImplementation(() => new Promise((resolve) => {
+      resolveSignIn = resolve
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household code'), 'obsolete-code')
+    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
+    await waitFor(() => expect(mocks.signInAnonymously).toHaveBeenCalled())
+
+    act(() => {
+      mocks.authListener?.('SIGNED_IN', session1)
+      mocks.authListener?.('SIGNED_IN', session2)
+      mocks.authListener?.('SIGNED_IN', session1)
+    })
+    await act(async () => {
+      resolveSignIn?.({ data: { session: session1 }, error: null })
+    })
+
+    expect(mocks.enrollHousehold).not.toHaveBeenCalled()
+  })
+
+  it('does not redeem after a delayed sign-in crosses an A-to-B-to-A identity change', async () => {
+    let resolveSignIn: ((value: { data: { session: typeof session1 }; error: null }) => void) | undefined
+    window.location.hash = 'invite=invite-token'
+    mocks.signInAnonymously.mockImplementation(() => new Promise((resolve) => {
+      resolveSignIn = resolve
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household name'), 'Obsolete household')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    await waitFor(() => expect(mocks.signInAnonymously).toHaveBeenCalled())
+
+    act(() => {
+      mocks.authListener?.('SIGNED_IN', session1)
+      mocks.authListener?.('SIGNED_IN', session2)
+      mocks.authListener?.('SIGNED_IN', session1)
+    })
+    await act(async () => {
+      resolveSignIn?.({ data: { session: session1 }, error: null })
+    })
+
+    expect(mocks.redeemHouseholdInvite).not.toHaveBeenCalled()
+  })
+
+  it('ignores a late enrollment result from the previous authenticated user', async () => {
+    let resolveEnrollment: ((value: null) => void) | undefined
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.enrollHousehold.mockImplementation(() => new Promise((resolve) => {
+      resolveEnrollment = resolve
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household code'), 'old-user-code')
+    await user.click(screen.getByRole('button', { name: 'Connect this device' }))
+    await waitFor(() => expect(mocks.enrollHousehold).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByLabelText('Household code')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Connect this device' })).toBeEnabled()
+
+    await act(async () => { resolveEnrollment?.(null) })
+    expect(screen.queryByText('That household access code is not valid.')).not.toBeInTheDocument()
+  })
+
+  it('ignores a late invite error from the previous authenticated user', async () => {
+    let rejectRedemption: ((reason: Error) => void) | undefined
+    window.location.hash = 'invite=invite-token'
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.redeemHouseholdInvite.mockImplementation(() => new Promise((_, reject) => {
+      rejectRedemption = reject
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household name'), 'Old household')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    await waitFor(() => expect(mocks.redeemHouseholdInvite).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByLabelText('Household name')).toHaveValue('')
+
+    await act(async () => { rejectRedemption?.(new Error('Old user invitation error')) })
+    expect(screen.queryByText('Old user invitation error')).not.toBeInTheDocument()
+  })
+
+  it('does not commit an obsolete invite redemption if the original user becomes active again', async () => {
+    let resolveRedemption: ((value: typeof household2 & { joinCode: string }) => void) | undefined
+    window.location.hash = 'invite=invite-token'
+    mocks.getSession.mockResolvedValue({ data: { session: session1 } })
+    mocks.redeemHouseholdInvite.mockImplementation(() => new Promise((resolve) => {
+      resolveRedemption = resolve
+    }))
+    const user = userEvent.setup()
+    render(<AuthGate><HouseholdChild /></AuthGate>)
+
+    await user.type(await screen.findByLabelText('Household name'), 'Old household')
+    await user.click(screen.getByRole('button', { name: 'Create household' }))
+    await waitFor(() => expect(mocks.redeemHouseholdInvite).toHaveBeenCalled())
+
+    act(() => mocks.authListener?.('SIGNED_IN', session2))
+    expect(await screen.findByLabelText('Household name')).toHaveValue('')
+    act(() => mocks.authListener?.('SIGNED_IN', session1))
+    expect(await screen.findByLabelText('Household name')).toHaveValue('')
+
+    await act(async () => {
+      resolveRedemption?.({ ...household2, joinCode: 'obsolete-join-code' })
+    })
+    expect(screen.queryByLabelText('Household join code')).not.toBeInTheDocument()
+    expect(screen.queryByText('Private app for Second home')).not.toBeInTheDocument()
   })
 
   it('does not commit enrollment after the authenticated user changes', async () => {
