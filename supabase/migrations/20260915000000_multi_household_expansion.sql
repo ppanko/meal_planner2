@@ -208,7 +208,7 @@ grant execute on function public.create_meal_planner_invite() to authenticated;
 
 create or replace function public.redeem_meal_planner_invite(
   invite_token text,
-  household_name text,
+  requested_household_name text,
   initial_state jsonb
 )
 returns table (
@@ -262,7 +262,7 @@ begin
     raise exception 'Invitation is invalid, expired, or already used';
   end if;
 
-  normalized_name := btrim(household_name);
+  normalized_name := btrim(requested_household_name);
   if normalized_name is null
      or char_length(normalized_name) < 1
      or char_length(normalized_name) > 80
