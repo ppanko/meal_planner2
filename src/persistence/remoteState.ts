@@ -1,4 +1,4 @@
-import { sharedStateId, supabase, supabaseConfigured } from '../supabase'
+import { supabase, supabaseConfigured } from '../supabase'
 import type { RemoteStateSnapshot, RemoteWriteResult } from '../sync/syncTypes'
 import type { AppState } from '../types'
 import { normalizeState } from './normalizeState'
@@ -22,18 +22,19 @@ function toSnapshot(row: RemoteRow): RemoteStateSnapshot | null {
   }
 }
 
-export async function readRemoteState(): Promise<RemoteStateSnapshot | null> {
+export async function readRemoteState(stateId: string): Promise<RemoteStateSnapshot | null> {
   if (!supabaseConfigured) return null
   const { data, error } = await supabase
     .from('meal_planner_state')
     .select('state, revision, updated_at, updated_by')
-    .eq('id', sharedStateId)
+    .eq('id', stateId)
     .maybeSingle()
   if (error) throw error
   return data ? toSnapshot(data as RemoteRow) : null
 }
 
 export async function writeRemoteState(
+  stateId: string,
   state: AppState,
   expectedRevision: number,
   mutationId: string,
@@ -51,7 +52,7 @@ export async function writeRemoteState(
   }
 
   const { data, error } = await supabase.rpc('save_meal_planner_state', {
-    requested_id: sharedStateId,
+    requested_id: stateId,
     requested_state: state,
     expected_revision: expectedRevision,
     mutation_id: mutationId,
@@ -63,13 +64,16 @@ export async function writeRemoteState(
   return { status: row.status, snapshot }
 }
 
-export function subscribeToRemoteState(onState: (snapshot: RemoteStateSnapshot) => void): () => void {
+export function subscribeToRemoteState(
+  stateId: string,
+  onState: (snapshot: RemoteStateSnapshot) => void,
+): () => void {
   if (!supabaseConfigured) return () => undefined
   const channel = supabase
-    .channel(`meal-planner-state-${sharedStateId}`)
+    .channel(`meal-planner-state-${stateId}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'meal_planner_state', filter: `id=eq.${sharedStateId}` },
+      { event: '*', schema: 'public', table: 'meal_planner_state', filter: `id=eq.${stateId}` },
       (payload) => {
         const snapshot = toSnapshot((payload.new ?? {}) as RemoteRow)
         if (snapshot) onState(snapshot)

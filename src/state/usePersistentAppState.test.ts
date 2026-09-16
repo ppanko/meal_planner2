@@ -5,6 +5,8 @@ import type { AppState } from '../types'
 import type { LoadedSyncState, RemoteStateSnapshot } from '../sync/syncTypes'
 
 const mocks = vi.hoisted(() => ({
+  stateId: '11111111-1111-4111-8111-111111111111',
+  stateIds: [] as string[],
   loadSyncState: vi.fn(),
   saveState: vi.fn(),
   cacheSyncState: vi.fn(),
@@ -14,13 +16,37 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
 }))
 
+vi.mock('../households/HouseholdContext', () => ({
+  useHouseholdSession: () => ({
+    householdId: mocks.stateId,
+    stateId: mocks.stateId,
+    householdName: 'Test household',
+    isAdmin: false,
+  }),
+}))
+
 vi.mock('../storage', async (importOriginal) => ({
   ...await importOriginal<typeof import('../storage')>(),
-  loadSyncState: mocks.loadSyncState,
-  saveState: mocks.saveState,
-  cacheSyncState: mocks.cacheSyncState,
-  refreshRemoteState: mocks.refreshRemoteState,
-  subscribeToRemoteState: mocks.subscribeToRemoteState,
+  loadSyncState: (stateId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.loadSyncState()
+  },
+  saveState: (stateId: string, state: AppState, revision: number, mutationId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.saveState(state, revision, mutationId)
+  },
+  cacheSyncState: (stateId: string, snapshot: unknown) => {
+    mocks.stateIds.push(stateId)
+    return mocks.cacheSyncState(snapshot)
+  },
+  refreshRemoteState: (stateId: string) => {
+    mocks.stateIds.push(stateId)
+    return mocks.refreshRemoteState()
+  },
+  subscribeToRemoteState: (stateId: string, listener: (snapshot: RemoteStateSnapshot) => void) => {
+    mocks.stateIds.push(stateId)
+    return mocks.subscribeToRemoteState(listener)
+  },
 }))
 
 import { usePersistentAppState } from './usePersistentAppState'
@@ -45,6 +71,8 @@ function savedResult(state: AppState, revision: number) {
 }
 
 beforeEach(() => {
+  mocks.stateId = '11111111-1111-4111-8111-111111111111'
+  mocks.stateIds.length = 0
   mocks.loadSyncState.mockReset()
   mocks.saveState.mockReset().mockImplementation((state: AppState, revision: number) =>
     Promise.resolve(savedResult(state, revision + 1)))
@@ -62,7 +90,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('usePersistentAppState', () => {
-  it('loads a sync session, accepts newer realtime state, and unsubscribes', async () => {
+  it('loads a household sync session, accepts newer realtime state, and unsubscribes', async () => {
     const initial = createAppState({ meals: [] })
     const newer = createAppState({ ingredients: [] })
     mocks.loadSyncState.mockResolvedValue(loaded(initial, { revision: 4 }))
@@ -71,6 +99,7 @@ describe('usePersistentAppState', () => {
     expect(result.current.storageReady).toBe(false)
     await waitFor(() => expect(result.current.state).toEqual(initial))
     expect(result.current.syncStatus).toBe('saved')
+    expect(mocks.stateIds.every((stateId) => stateId === mocks.stateId)).toBe(true)
 
     act(() => mocks.remoteListener?.(remote(newer, 5)))
     expect(result.current.state).toEqual(newer)
@@ -140,6 +169,42 @@ describe('usePersistentAppState', () => {
       shoppingPurchasesByWeek: second.shoppingPurchasesByWeek,
       manualShoppingItems: { week: [expect.objectContaining({ id: 'more', name: 'Milk' })] },
     })
+  })
+
+  it('does not let an old household save unlock syncing in the new household', async () => {
+    const initial = createAppState()
+    const firstHouseholdEdit = { ...initial, plannerNotes: { monday: { Dinner: 'Household A' } } }
+    const firstNewHouseholdEdit = { ...initial, plannerNotes: { monday: { Dinner: 'Household B first' } } }
+    const secondNewHouseholdEdit = { ...initial, plannerNotes: { monday: { Dinner: 'Household B second' } } }
+    let finishOldSave: ((value: ReturnType<typeof savedResult>) => void) | undefined
+    let finishNewSave: ((value: ReturnType<typeof savedResult>) => void) | undefined
+    mocks.loadSyncState.mockResolvedValue(loaded(initial))
+    mocks.saveState
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOldSave = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNewSave = resolve }))
+      .mockImplementation((state: AppState, revision: number) =>
+        Promise.resolve(savedResult(state, revision + 1)))
+
+    const { result, rerender } = renderHook(() => usePersistentAppState())
+    await waitFor(() => expect(result.current.storageReady).toBe(true))
+    act(() => result.current.update(firstHouseholdEdit))
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledTimes(1))
+
+    mocks.stateId = '22222222-2222-4222-8222-222222222222'
+    rerender()
+    await waitFor(() => expect(mocks.loadSyncState).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.storageReady).toBe(true))
+    act(() => result.current.update(firstNewHouseholdEdit))
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledTimes(2))
+
+    await act(async () => { finishOldSave?.(savedResult(firstHouseholdEdit, 2)) })
+    act(() => result.current.update(secondNewHouseholdEdit))
+    await act(async () => Promise.resolve())
+
+    expect(mocks.saveState).toHaveBeenCalledTimes(2)
+
+    await act(async () => { finishNewSave?.(savedResult(firstNewHouseholdEdit, 2)) })
+    await waitFor(() => expect(mocks.saveState).toHaveBeenCalledTimes(3))
   })
 
   it('automatically merges a non-overlapping server change after a revision conflict', async () => {
@@ -258,7 +323,7 @@ describe('usePersistentAppState', () => {
     expect(result.current.state?.planner['2026-08-17'].Dinner).toEqual([])
   })
 
-  it('restores and syncs pending changes loaded from local persistence', async () => {
+  it('restores and syncs pending changes loaded from household-local persistence', async () => {
     const initial = createAppState()
     const pendingState = { ...initial, plannerNotes: { '2026-08-17': { Dinner: 'Recovered' } } }
     mocks.loadSyncState.mockResolvedValue(loaded(pendingState, {
@@ -329,6 +394,23 @@ describe('usePersistentAppState', () => {
     expect(result.current.state?.meals).toContainEqual(expect.objectContaining({ id: 'tacos' }))
     expect(result.current.state?.plannerNotes).toEqual(server.plannerNotes)
     await waitFor(() => expect(result.current.syncStatus).toBe('saved'))
+  })
+
+  it('clears undo state when the household namespace changes', async () => {
+    const initial = createAppState()
+    mocks.loadSyncState.mockResolvedValue(loaded(initial))
+    const { result, rerender } = renderHook(() => usePersistentAppState())
+    await waitFor(() => expect(result.current.storageReady).toBe(true))
+
+    act(() => result.current.updateWithUndo({ ...initial, meals: [] }, 'Deleted meals'))
+    expect(result.current.undoAction?.message).toBe('Deleted meals')
+
+    mocks.stateId = '22222222-2222-4222-8222-222222222222'
+    rerender()
+    await waitFor(() => expect(mocks.loadSyncState).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.storageReady).toBe(true))
+
+    expect(result.current.undoAction).toBeNull()
   })
 
   it('expires undo actions after six seconds and ignores updates before loading', async () => {
