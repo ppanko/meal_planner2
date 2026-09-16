@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type { HouseholdSession } from './types'
+import './households.css'
 
 const HouseholdContext = createContext<HouseholdSession | null>(null)
 
