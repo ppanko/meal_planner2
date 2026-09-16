@@ -1,14 +1,14 @@
 name: Verify multi-household feature
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/multi-household-invites
+      - master
 
 permissions: {}
 
 concurrency:
-  group: multi-household-feature
+  group: multi-household-feature-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
