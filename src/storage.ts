@@ -27,11 +27,11 @@ function localSession(state: AppState, snapshot: LocalSyncSnapshot | null): Load
   }
 }
 
-export async function loadSyncState(): Promise<LoadedSyncState> {
+export async function loadSyncState(stateId: string): Promise<LoadedSyncState> {
   const [local, localSync, hadStoredLocalState] = await Promise.all([
-    loadLocalState(),
-    loadLocalSyncSnapshot(),
-    hasStoredLocalState(),
+    loadLocalState(stateId),
+    loadLocalSyncSnapshot(stateId),
+    hasStoredLocalState(stateId),
   ])
 
   if (!supabaseConfigured) {
@@ -43,12 +43,12 @@ export async function loadSyncState(): Promise<LoadedSyncState> {
       pendingChanges: [],
       remoteAvailable: true,
     }
-    await cacheLocalSyncSnapshot(loaded)
+    await cacheLocalSyncSnapshot(stateId, loaded)
     return loaded
   }
 
   try {
-    const remote = await readRemoteState()
+    const remote = await readRemoteState(stateId)
     if (remote) {
       const hasLegacyDifference = !localSync
         && hadStoredLocalState
@@ -77,12 +77,12 @@ export async function loadSyncState(): Promise<LoadedSyncState> {
             pendingChanges: [],
             remoteAvailable: true,
           }
-      await cacheLocalSyncSnapshot(loaded)
+      await cacheLocalSyncSnapshot(stateId, loaded)
       return loaded
     }
 
     const initialState = localSync?.workingState ?? local
-    const result = await writeRemoteState(initialState, 0, crypto.randomUUID())
+    const result = await writeRemoteState(stateId, initialState, 0, crypto.randomUUID())
     const loaded: LoadedSyncState = {
       workingState: result.snapshot.state,
       confirmedState: result.snapshot.state,
@@ -90,7 +90,7 @@ export async function loadSyncState(): Promise<LoadedSyncState> {
       pendingChanges: [],
       remoteAvailable: true,
     }
-    await cacheLocalSyncSnapshot(loaded)
+    await cacheLocalSyncSnapshot(stateId, loaded)
     return loaded
   } catch (error) {
     console.warn('Remote meal-planner state unavailable; using local cache.', error)
@@ -98,20 +98,21 @@ export async function loadSyncState(): Promise<LoadedSyncState> {
   }
 }
 
-export async function loadState(): Promise<AppState> {
-  return (await loadSyncState()).workingState
+export async function loadState(stateId: string): Promise<AppState> {
+  return (await loadSyncState(stateId)).workingState
 }
 
 export async function saveState(
+  stateId: string,
   state: AppState,
   expectedRevision = 0,
   mutationId: string = crypto.randomUUID(),
 ): Promise<RemoteWriteResult> {
   const normalized = normalizeState(state)
-  await cacheState(normalized)
-  const result = await writeRemoteState(normalized, expectedRevision, mutationId)
+  await cacheState(stateId, normalized)
+  const result = await writeRemoteState(stateId, normalized, expectedRevision, mutationId)
   if (!supabaseConfigured && result.status === 'saved') {
-    await cacheLocalSyncSnapshot({
+    await cacheLocalSyncSnapshot(stateId, {
       workingState: result.snapshot.state,
       confirmedState: result.snapshot.state,
       revision: result.snapshot.revision,
@@ -121,6 +122,10 @@ export async function saveState(
   return result
 }
 
-export const cacheSyncState = cacheLocalSyncSnapshot
+export async function cacheSyncState(stateId: string, snapshot: LocalSyncSnapshot): Promise<void> {
+  await cacheLocalSyncSnapshot(stateId, snapshot)
+}
 
-export const resetState = resetLocalState
+export async function resetState(stateId: string): Promise<void> {
+  await resetLocalState(stateId)
+}
