@@ -1,20 +1,14 @@
-export type KitchenPurchaseEvent = {
-  eventId: string
-  householdId: string
-  ingredientId: string | null
-  name: string
-  quantity: number | null
-  unit: string | null
-  shoppingCategoryId: string | null
-  purchasedAt: string
-}
+import type { AppState, KitchenPurchaseEvent } from '../types'
+
+export type { KitchenPurchaseEvent } from '../types'
 
 export type KitchenPurchaseEventInput = Omit<KitchenPurchaseEvent, 'eventId' | 'purchasedAt'> & {
   eventId?: string
   purchasedAt?: string
 }
 
-type SupabaseInsertResult = { error: { message?: string } | null }
+type SupabaseError = { message?: string; code?: string } | null
+type SupabaseInsertResult = { error: SupabaseError }
 
 type SupabaseLike = {
   from: (table: string) => {
@@ -43,6 +37,17 @@ export function createKitchenPurchaseEvent(input: KitchenPurchaseEventInput): Ki
   }
 }
 
+export function appendPendingKitchenPurchaseEvent(
+  state: AppState,
+  event: KitchenPurchaseEvent,
+): AppState {
+  if (state.pendingKitchenPurchaseEvents.some((candidate) => candidate.eventId === event.eventId)) return state
+  return {
+    ...state,
+    pendingKitchenPurchaseEvents: [...state.pendingKitchenPurchaseEvents, event],
+  }
+}
+
 export async function enqueueKitchenPurchaseEvent(
   client: SupabaseLike,
   event: KitchenPurchaseEvent,
@@ -57,5 +62,25 @@ export async function enqueueKitchenPurchaseEvent(
     shopping_category_id: event.shoppingCategoryId,
     purchased_at: event.purchasedAt,
   })
-  if (error) throw new Error(error.message || 'Could not enqueue kitchen purchase event')
+  if (error && error.code !== '23505') {
+    const failure = new Error(error.message || 'Could not enqueue kitchen purchase event')
+    Object.assign(failure, { code: error.code })
+    throw failure
+  }
+}
+
+export async function flushKitchenPurchaseEvents(
+  client: SupabaseLike,
+  events: KitchenPurchaseEvent[],
+): Promise<{ sentEventIds: string[] }> {
+  const sentEventIds: string[] = []
+  for (const event of events) {
+    try {
+      await enqueueKitchenPurchaseEvent(client, event)
+      sentEventIds.push(event.eventId)
+    } catch {
+      break
+    }
+  }
+  return { sentEventIds }
 }
