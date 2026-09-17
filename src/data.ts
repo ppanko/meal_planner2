@@ -18,6 +18,7 @@ export const seedState: AppState = {
   plannerNotes: {},
   shoppingPurchasesByWeek: {},
   shoppingDismissedByWeek: {},
+  pendingKitchenPurchaseEvents: [],
   ingredients: [
     { id: 'eggs', name: 'Eggs', unit: 'each', proteinCategoryId: null },
     { id: 'milk', name: 'Milk', unit: 'cup', proteinCategoryId: null },
