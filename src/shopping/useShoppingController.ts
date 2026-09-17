@@ -1,5 +1,9 @@
 import { useMemo } from 'react'
 import { findIngredientByName } from '../ingredients/catalog'
+import {
+  appendPendingKitchenPurchaseEvent,
+  createKitchenPurchaseEvent,
+} from '../integrations/kitchenPurchaseEvents'
 import { defaultShoppingCategories } from '../types'
 import type { AppState, Ingredient, ManualShoppingItem, ShoppingCategory } from '../types'
 import { dateKey } from '../utils/dates'
@@ -158,7 +162,7 @@ export function useShoppingController({
 
     const ingredient = state.ingredients.find((entry) => entry.id === item.ingredientId)
 
-    update({
+    let nextState: AppState = {
       ...state,
       shoppingPurchasesByWeek: {
         ...state.shoppingPurchasesByWeek,
@@ -173,7 +177,20 @@ export function useShoppingController({
               ingredient.id,
             )
           : state.shoppingHistory,
-    })
+    }
+
+    if (!item.checked) {
+      nextState = appendPendingKitchenPurchaseEvent(nextState, createKitchenPurchaseEvent({
+        householdId: 'household',
+        ingredientId: item.ingredientId,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        shoppingCategoryId: item.shoppingCategoryId ?? ingredient?.shoppingCategoryId ?? null,
+      }))
+    }
+
+    update(nextState)
   }
 
   function hasActiveManualItem(items: ManualShoppingItem[], name: string) {
@@ -301,8 +318,7 @@ export function useShoppingController({
             (ingredientId !== null && item.ingredientId === ingredientId) || manualIdSet.has(item.id)
               ? { ...item, shoppingCategoryId: nextCategoryId }
               : item,
-          ),
-        ]),
+        ),
       ),
       shoppingHistory: state.shoppingHistory.map((item) =>
         (ingredientId !== null && item.ingredientId === ingredientId)
@@ -331,7 +347,7 @@ export function useShoppingController({
     if (!target) return
 
     const nextChecked = !target.checked
-    update({
+    let nextState: AppState = {
       ...state,
       manualShoppingItems: {
         ...state.manualShoppingItems,
@@ -347,7 +363,20 @@ export function useShoppingController({
             target.ingredientId ?? null,
           )
         : state.shoppingHistory,
-    })
+    }
+
+    if (nextChecked) {
+      nextState = appendPendingKitchenPurchaseEvent(nextState, createKitchenPurchaseEvent({
+        householdId: 'household',
+        ingredientId: target.ingredientId ?? null,
+        name: target.name,
+        quantity: target.quantity ?? null,
+        unit: target.unit ?? null,
+        shoppingCategoryId: target.shoppingCategoryId ?? null,
+      }))
+    }
+
+    update(nextState)
   }
 
   function deleteManualShoppingItem(id: string) {

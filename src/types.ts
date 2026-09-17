@@ -77,6 +77,18 @@ export type ShoppingHistoryItem = {
   shoppingCategoryId?: string | null
   ingredientId?: string | null
 }
+
+export type KitchenPurchaseEvent = {
+  eventId: string
+  householdId: string
+  ingredientId: string | null
+  name: string
+  quantity: number | null
+  unit: string | null
+  shoppingCategoryId: string | null
+  purchasedAt: string
+}
+
 export type AppState = {
   ingredients: Ingredient[]
   meals: Meal[]
@@ -89,6 +101,7 @@ export type AppState = {
   plannerNotes: Record<string, Record<string, string>>
   shoppingPurchasesByWeek: Record<string, Record<string, number>>
   shoppingDismissedByWeek: Record<string, Record<string, number>>
+  pendingKitchenPurchaseEvents: KitchenPurchaseEvent[]
   shoppingCategories?: ShoppingCategory[]
   shoppingCategoryOrder?: string[]
 }

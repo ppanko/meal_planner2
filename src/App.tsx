@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { AppView } from './appTypes'
+import { useKitchenPurchaseOutbox } from './integrations/useKitchenPurchaseOutbox'
 import { PlannerView } from './planner/PlannerView'
 import { MealCard } from './planner/PlannerSlots'
 import { usePlannerController } from './planner/usePlannerController'
@@ -35,6 +36,8 @@ function App() {
     deferConflict,
     reviewConflict,
   } = usePersistentAppState()
+
+  useKitchenPurchaseOutbox({ state, update })
 
   const planner = usePlannerController({
     state,
