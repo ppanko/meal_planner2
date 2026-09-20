@@ -1,4 +1,5 @@
 import type { Ingredient, Meal } from '../types'
+import { normalizeRecipeUrl } from '../meals/recipeDetails'
 import { formatQuantity } from '../utils/text'
 import './PlannerMealDetails.css'
 
@@ -11,6 +12,7 @@ export function PlannerMealDetails({ meal, ingredients, onClose }: {
     const ingredient = ingredients.find((candidate) => candidate.id === item.ingredientId)
     return ingredient ? [{ ingredient, quantity: item.quantity }] : []
   })
+  const recipeUrl = normalizeRecipeUrl(meal.recipeUrl ?? '')
 
   return (
     <div className="modal-backdrop planner-meal-details-backdrop" onClick={onClose}>
@@ -37,6 +39,19 @@ export function PlannerMealDetails({ meal, ingredients, onClose }: {
           </ul>
         ) : (
           <p className="planner-meal-details-empty">No ingredients listed.</p>
+        )}
+        {recipeUrl && (
+          <>
+            <h3>Recipe URL</h3>
+            <a
+              className="planner-meal-details-url"
+              href={recipeUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {recipeUrl}
+            </a>
+          </>
         )}
       </div>
     </div>
