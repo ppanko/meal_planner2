@@ -15,10 +15,14 @@ import { usePersistentAppState } from './state/usePersistentAppState'
 import { SyncConflictDialog } from './state/SyncConflictDialog'
 import { SyncStatusIndicator } from './state/SyncStatusIndicator'
 import { formatRange, getWeekDates, getWeekDatesForDateKey } from './utils/dates'
+import { useHouseholdSession } from './households/HouseholdContext'
+import { InviteHouseholdModal } from './households/InviteHouseholdModal'
 
 function App() {
+  const { isAdmin } = useHouseholdSession()
   const [view, setView] = useState<AppView>('planner')
   const [weekOffset, setWeekOffset] = useState(0)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
 
   const {
@@ -73,6 +77,11 @@ function App() {
           </div>
           <div className="topbar-actions">
             <SyncStatusIndicator status={syncStatus} onReview={reviewConflict} />
+            {isAdmin && (
+              <button className="text-button" onClick={() => setInviteOpen(true)}>
+                Invite household
+              </button>
+            )}
             {view === 'planner' && <button className="text-button" onClick={planner.clearWeek}>Clear week</button>}
             {view === 'shopping' && <button className="text-button" onClick={shopping.clearShoppingList}>Clear shopping list</button>}
           </div>
@@ -241,6 +250,8 @@ function App() {
             </div>
           </div>
         )}
+
+        {inviteOpen && <InviteHouseholdModal onClose={() => setInviteOpen(false)} />}
 
         {undoAction && (
           <div className="undo-snackbar" role="status" aria-live="polite">

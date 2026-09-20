@@ -1,27 +1,15 @@
--- Meal Planner: anonymous enrollment, isolated households, and versioned state.
---
--- Run this file unchanged in the Supabase SQL Editor.
---
--- IMPORTANT:
--- At the end of the bootstrap-code statement, the script returns a random
--- HOUSEHOLD ACCESS CODE only the first time it is run. Save that code somewhere
--- private. It enrolls the owner's first device into the bootstrap household.
--- The plaintext code is never stored in the database.
---
--- Re-running this script preserves planner data, households, and enrolled users.
+-- Expand the existing single-household Meal Planner schema to support isolated
+-- household state while preserving the deployed legacy client compatibility
+-- path. This migration intentionally leaves versioned_sync in the expand phase.
 
-create extension if not exists pgcrypto with schema extensions;
-
--- Compatibility storage for the original household code. It remains while the
--- deployed legacy client is supported during the expansion window.
-create table if not exists public.meal_planner_access (
-  id text primary key,
-  code_hash text not null,
-  created_at timestamptz not null default now()
-);
-
-alter table public.meal_planner_access enable row level security;
-revoke all on table public.meal_planner_access from anon, authenticated;
+do $$
+begin
+  if to_regclass('public.meal_planner_state') is null
+     or to_regclass('public.meal_planner_members') is null
+     or to_regclass('public.meal_planner_access') is null then
+    raise exception 'Run supabase/setup.sql before applying Meal Planner migrations';
+  end if;
+end $$;
 
 create table if not exists public.meal_planner_households (
   id uuid primary key,
@@ -58,15 +46,26 @@ revoke all on table public.meal_planner_households from anon, authenticated;
 revoke all on table public.meal_planner_admins from anon, authenticated;
 revoke all on table public.meal_planner_invites from anon, authenticated;
 
--- Anonymous Supabase users belong to exactly one household.
-create table if not exists public.meal_planner_members (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  household_id uuid references public.meal_planner_households(id) on delete cascade,
-  enrolled_at timestamptz not null default now()
-);
+-- Preserve the current access code as the join code for the legacy household.
+insert into public.meal_planner_households (id, state_id, name, code_hash)
+select
+  gen_random_uuid(),
+  'household',
+  'Household',
+  access.code_hash
+from public.meal_planner_access as access
+where access.id = 'household'
+on conflict (state_id) do update
+set code_hash = excluded.code_hash;
 
 alter table public.meal_planner_members
   add column if not exists household_id uuid;
+
+update public.meal_planner_members as member
+set household_id = household.id
+from public.meal_planner_households as household
+where member.household_id is null
+  and household.state_id = 'household';
 
 do $$
 begin
@@ -84,186 +83,17 @@ begin
   end if;
 end $$;
 
+alter table public.meal_planner_members
+  alter column household_id set not null;
 alter table public.meal_planner_members enable row level security;
 revoke all on table public.meal_planner_members from anon, authenticated;
 
--- Generate the bootstrap household code only when the legacy access row does
--- not yet exist. The SELECT returns the plaintext once; only its hash persists.
-with generated as materialized (
-  select encode(extensions.gen_random_bytes(12), 'hex') as code
-),
-inserted as (
-  insert into public.meal_planner_access (id, code_hash)
-  select
-    'household',
-    encode(extensions.digest(code, 'sha256'), 'hex')
-  from generated
-  on conflict (id) do nothing
-  returning id
-)
-select code as household_access_code
-from generated
-where exists (select 1 from inserted);
-
--- Every installation retains one bootstrap/legacy household. On an existing
--- project its join-code hash is copied from the original access row.
-insert into public.meal_planner_households (id, state_id, name, code_hash)
-select
-  gen_random_uuid(),
-  'household',
-  'Household',
-  access.code_hash
-from public.meal_planner_access as access
-where access.id = 'household'
-on conflict (state_id) do update
-set code_hash = excluded.code_hash;
-
-update public.meal_planner_members as member
-set household_id = household.id
-from public.meal_planner_households as household
-where member.household_id is null
-  and household.state_id = 'household';
-
-alter table public.meal_planner_members
-  alter column household_id set not null;
-
--- Fresh databases begin contracted because no old direct-upsert frontend has
--- ever existed. Re-running setup against the old state table preserves expand.
-create table if not exists public.meal_planner_release_state (
-  id text primary key,
-  phase text not null check (phase in ('expand', 'contract')),
-  updated_at timestamptz not null default now(),
-  constraint meal_planner_release_state_id check (id = 'versioned_sync')
-);
-
-alter table public.meal_planner_release_state enable row level security;
-revoke all on table public.meal_planner_release_state from anon, authenticated;
-
-insert into public.meal_planner_release_state (id, phase)
-select
-  'versioned_sync',
-  case
-    when to_regclass('public.meal_planner_state') is null then 'contract'
-    else 'expand'
-  end
-on conflict (id) do nothing;
-
-create table if not exists public.meal_planner_state (
-  id text primary key,
-  state jsonb not null,
-  revision bigint not null default 0,
-  updated_at timestamptz not null default now(),
-  updated_by uuid references auth.users(id) on delete set null,
-  last_mutation_id uuid
-);
-
-alter table public.meal_planner_state add column if not exists revision bigint not null default 0;
-alter table public.meal_planner_state add column if not exists updated_by uuid references auth.users(id) on delete set null;
-alter table public.meal_planner_state add column if not exists last_mutation_id uuid;
-
-create table if not exists public.meal_planner_state_versions (
-  state_id text not null,
-  revision bigint not null,
-  state jsonb not null,
-  archived_at timestamptz not null default now(),
-  archived_by uuid references auth.users(id) on delete set null,
-  mutation_id uuid,
-  primary key (state_id, revision)
-);
-
-alter table public.meal_planner_state_versions enable row level security;
-revoke all on table public.meal_planner_state_versions from anon, authenticated;
-
-create or replace function public.meal_planner_json_keys_are_safe(
-  value jsonb,
-  nesting_depth integer default 0
-)
-returns boolean
-language plpgsql
-immutable
-strict
-set search_path = pg_catalog, pg_temp
-as $$
-declare
-  object_entry record;
-  array_value jsonb;
-begin
-  if nesting_depth > 32 then
-    return false;
-  end if;
-
-  if jsonb_typeof(value) = 'object' then
-    for object_entry in
-      select entry.key, entry.value
-      from jsonb_each(value) as entry(key, value)
-    loop
-      if object_entry.key in ('__proto__', 'prototype', 'constructor') then
-        return false;
-      end if;
-      if not public.meal_planner_json_keys_are_safe(object_entry.value, nesting_depth + 1) then
-        return false;
-      end if;
-    end loop;
-  elsif jsonb_typeof(value) = 'array' then
-    for array_value in select nested.value from jsonb_array_elements(value) as nested(value)
-    loop
-      if not public.meal_planner_json_keys_are_safe(array_value, nesting_depth + 1) then
-        return false;
-      end if;
-    end loop;
-  end if;
-
-  return true;
-end;
-$$;
-
-revoke all on function public.meal_planner_json_keys_are_safe(jsonb, integer) from public;
-
-create or replace function public.meal_planner_state_is_valid(value jsonb)
-returns boolean
-language sql
-immutable
-strict
-set search_path = pg_catalog, pg_temp
-as $$
-  select
-    jsonb_typeof(value) is not distinct from 'object'
-    and octet_length(value::text) <= 750000
-    and jsonb_typeof(value -> 'ingredients') is not distinct from 'array'
-    and jsonb_typeof(value -> 'meals') is not distinct from 'array'
-    and jsonb_typeof(value -> 'planner') is not distinct from 'object'
-    and jsonb_typeof(value -> 'shoppingChecked') is not distinct from 'object'
-    and jsonb_typeof(value -> 'manualShoppingItems') is not distinct from 'object'
-    and jsonb_typeof(value -> 'proteinCategories') is not distinct from 'array'
-    and jsonb_typeof(value -> 'plannerRowsByWeek') is not distinct from 'object'
-    and jsonb_typeof(value -> 'shoppingHistory') is not distinct from 'array'
-    and jsonb_typeof(value -> 'plannerNotes') is not distinct from 'object'
-    and jsonb_typeof(value -> 'shoppingPurchasesByWeek') is not distinct from 'object'
-    and jsonb_typeof(value -> 'shoppingDismissedByWeek') is not distinct from 'object'
-    and jsonb_typeof(value -> 'shoppingCategories') is not distinct from 'array'
-    and jsonb_typeof(value -> 'shoppingCategoryOrder') is not distinct from 'array'
-    and public.meal_planner_json_keys_are_safe(value);
-$$;
-
-revoke all on function public.meal_planner_state_is_valid(jsonb) from public;
-
--- Multi-household state IDs are UUID text for new households; do not recreate
--- the previous CHECK (id = 'household') constraint.
+-- The previous hard state-ID check prevents UUID-backed household rows.
 alter table public.meal_planner_state
   drop constraint if exists meal_planner_household_state_id;
 
-alter table public.meal_planner_state
-  drop constraint if exists meal_planner_nonnegative_revision;
-alter table public.meal_planner_state
-  add constraint meal_planner_nonnegative_revision
-  check (revision >= 0) not valid;
-
-alter table public.meal_planner_state
-  drop constraint if exists meal_planner_valid_state_payload;
-alter table public.meal_planner_state
-  add constraint meal_planner_valid_state_payload
-  check (public.meal_planner_state_is_valid(state)) not valid;
-
+-- The legacy compatibility predicate now means membership in the migrated
+-- legacy household specifically, not membership in any Meal Planner household.
 create or replace function public.is_meal_planner_authorized()
 returns boolean
 language sql
@@ -562,7 +392,8 @@ $$;
 revoke all on function public.enroll_meal_planner_household(text) from public;
 grant execute on function public.enroll_meal_planner_household(text) to authenticated;
 
--- Legacy enrollment remains available only for the bootstrap household.
+-- Keep the deployed enrollment RPC working, but bind it specifically to the
+-- legacy household instead of inserting an unscoped membership.
 create or replace function public.enroll_meal_planner_device(access_code text)
 returns boolean
 language plpgsql
@@ -616,6 +447,54 @@ $$;
 
 revoke all on function public.enroll_meal_planner_device(text) from public;
 grant execute on function public.enroll_meal_planner_device(text) to authenticated;
+
+-- New clients may read only their resolved state row. A stale client still
+-- requests id='household', which succeeds only for legacy-household members.
+drop policy if exists "household can read meal planner" on public.meal_planner_state;
+create policy "household can read meal planner"
+on public.meal_planner_state
+for select
+to authenticated
+using ((select public.can_access_meal_planner_state(id)));
+
+-- The temporary direct-write bridge remains legacy-household-only.
+drop policy if exists "household can create meal planner" on public.meal_planner_state;
+drop policy if exists "household can update meal planner" on public.meal_planner_state;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.meal_planner_release_state
+    where id = 'versioned_sync' and phase = 'expand'
+  ) then
+    execute $policy$
+      create policy "household can create meal planner"
+      on public.meal_planner_state
+      for insert
+      to authenticated
+      with check (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+    $policy$;
+
+    execute $policy$
+      create policy "household can update meal planner"
+      on public.meal_planner_state
+      for update
+      to authenticated
+      using (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+      with check (
+        id = 'household'
+        and (select public.is_meal_planner_authorized())
+      )
+    $policy$;
+  end if;
+end $$;
 
 create or replace function public.guard_legacy_meal_planner_write()
 returns trigger
@@ -681,69 +560,7 @@ $$;
 
 revoke all on function public.guard_legacy_meal_planner_write() from public;
 
-revoke all on table public.meal_planner_state from anon, authenticated;
-grant select on table public.meal_planner_state to authenticated;
-alter table public.meal_planner_state enable row level security;
-
-drop policy if exists "household can read meal planner" on public.meal_planner_state;
-drop policy if exists "household can create meal planner" on public.meal_planner_state;
-drop policy if exists "household can update meal planner" on public.meal_planner_state;
-
-create policy "household can read meal planner"
-on public.meal_planner_state
-for select
-to authenticated
-using ((select public.can_access_meal_planner_state(id)));
-
-drop trigger if exists guard_legacy_meal_planner_write
-on public.meal_planner_state;
-
-do $$
-begin
-  if exists (
-    select 1
-    from public.meal_planner_release_state
-    where id = 'versioned_sync' and phase = 'expand'
-  ) then
-    grant insert, update on table public.meal_planner_state to authenticated;
-    grant execute on function public.meal_planner_state_is_valid(jsonb) to authenticated;
-    grant execute on function public.meal_planner_json_keys_are_safe(jsonb, integer) to authenticated;
-
-    execute $policy$
-      create policy "household can create meal planner"
-      on public.meal_planner_state
-      for insert
-      to authenticated
-      with check (
-        id = 'household'
-        and (select public.is_meal_planner_authorized())
-      )
-    $policy$;
-
-    execute $policy$
-      create policy "household can update meal planner"
-      on public.meal_planner_state
-      for update
-      to authenticated
-      using (
-        id = 'household'
-        and (select public.is_meal_planner_authorized())
-      )
-      with check (
-        id = 'household'
-        and (select public.is_meal_planner_authorized())
-      )
-    $policy$;
-
-    create trigger guard_legacy_meal_planner_write
-    before insert or update on public.meal_planner_state
-    for each row execute function public.guard_legacy_meal_planner_write();
-  else
-    revoke execute on function public.meal_planner_state_is_valid(jsonb) from authenticated;
-    revoke execute on function public.meal_planner_json_keys_are_safe(jsonb, integer) from authenticated;
-  end if;
-end $$;
-
+-- CAS writes are household-aware for the new client.
 create or replace function public.save_meal_planner_state(
   requested_id text,
   requested_state jsonb,
@@ -887,17 +704,3 @@ $$;
 
 revoke all on function public.save_meal_planner_state(text, jsonb, bigint, uuid) from public;
 grant execute on function public.save_meal_planner_state(text, jsonb, bigint, uuid) to authenticated;
-
--- Realtime support.
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'meal_planner_state'
-  ) then
-    alter publication supabase_realtime add table public.meal_planner_state;
-  end if;
-end $$;

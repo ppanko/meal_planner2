@@ -22,6 +22,7 @@ import {
   subscribeToRemoteState,
 } from '../storage'
 import { clone } from '../utils/clone'
+import { useHouseholdSession } from '../households/HouseholdContext'
 
 export type UndoAction = {
   message: string
@@ -39,6 +40,7 @@ type InternalConflict = {
 }
 
 export function usePersistentAppState() {
+  const { stateId } = useHouseholdSession()
   const [state, setState] = useState<AppState | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
@@ -50,12 +52,17 @@ export function usePersistentAppState() {
   const pendingRef = useRef<PendingStateChange[]>([])
   const readyRef = useRef(false)
   const mountedRef = useRef(true)
+  const activeStateIdRef = useRef(stateId)
   const syncingRef = useRef(false)
   const syncStatusRef = useRef<SyncStatus>('saved')
   const conflictRef = useRef<InternalConflict | null>(null)
   const queuedRemoteRef = useRef<RemoteStateSnapshot | null>(null)
   const undoTimerRef = useRef<number | null>(null)
   const cacheQueueRef = useRef<Promise<void>>(Promise.resolve())
+
+  function isActiveNamespace(namespace: string) {
+    return mountedRef.current && activeStateIdRef.current === namespace
+  }
 
   function setSyncStatus(next: SyncStatus) {
     syncStatusRef.current = next
@@ -82,7 +89,8 @@ export function usePersistentAppState() {
   function persistSession() {
     const workingState = stateRef.current
     const confirmed = confirmedRef.current
-    if (!workingState || !confirmed) return Promise.resolve()
+    const namespace = stateId
+    if (!workingState || !confirmed || !isActiveNamespace(namespace)) return Promise.resolve()
 
     const snapshot: LocalSyncSnapshot = {
       workingState: clone(workingState),
@@ -92,7 +100,7 @@ export function usePersistentAppState() {
     }
     cacheQueueRef.current = cacheQueueRef.current
       .catch(() => undefined)
-      .then(() => cacheSyncState(snapshot))
+      .then(() => cacheSyncState(namespace, snapshot))
     return cacheQueueRef.current
   }
 
@@ -119,16 +127,21 @@ export function usePersistentAppState() {
     setConflictVisible(true)
     setSyncStatus('conflict')
     rebuildWorkingState()
-    persistSession()
+    void persistSession()
   }
 
   async function syncPendingChanges() {
-    if (!readyRef.current || syncingRef.current || conflictRef.current) return
+    const namespace = stateId
+    if (!isActiveNamespace(namespace) || !readyRef.current || syncingRef.current || conflictRef.current) return
     if (!confirmedRef.current) return
 
     syncingRef.current = true
     try {
-      while (pendingRef.current.length > 0 && !conflictRef.current) {
+      while (
+        isActiveNamespace(namespace)
+        && pendingRef.current.length > 0
+        && !conflictRef.current
+      ) {
         const change = pendingRef.current[0]
         const latest = confirmedRef.current!
         const localMerge = mergeAppStates(change.baseState, change.nextState, latest.state, 'local')
@@ -147,21 +160,21 @@ export function usePersistentAppState() {
         if (appStatesEqual(localMerge.state, latest.state)) {
           pendingRef.current.shift()
           rebuildWorkingState()
-          persistSession()
+          void persistSession()
           continue
         }
 
         setSyncStatus('saving')
         try {
           await persistSession()
-          const result = await saveState(localMerge.state, latest.revision, change.id)
-          if (!mountedRef.current) return
+          const result = await saveState(namespace, localMerge.state, latest.revision, change.id)
+          if (!isActiveNamespace(namespace)) return
 
           if (result.status === 'conflict') {
             confirmedRef.current = result.snapshot
             if (appStatesEqual(result.snapshot.state, localMerge.state)) pendingRef.current.shift()
             rebuildWorkingState()
-            persistSession()
+            void persistSession()
             continue
           }
 
@@ -170,28 +183,34 @@ export function usePersistentAppState() {
           }
           pendingRef.current.shift()
           rebuildWorkingState()
-          persistSession()
+          void persistSession()
         } catch (error) {
+          if (!isActiveNamespace(namespace)) return
           console.warn('Could not sync meal-planner changes; they remain saved on this device.', error)
           setSyncStatus('offline')
-          persistSession()
+          void persistSession()
           break
         }
       }
 
-      if (pendingRef.current.length === 0 && !conflictRef.current) {
+      if (
+        isActiveNamespace(namespace)
+        && pendingRef.current.length === 0
+        && !conflictRef.current
+      ) {
         setSyncStatus('saved')
-        persistSession()
+        void persistSession()
       }
     } finally {
-      syncingRef.current = false
-      if (
-        mountedRef.current
-        && pendingRef.current.length > 0
-        && !conflictRef.current
-        && syncStatusRef.current === 'saving'
-      ) {
-        queueMicrotask(() => void syncPendingChanges())
+      if (isActiveNamespace(namespace)) {
+        syncingRef.current = false
+        if (
+          pendingRef.current.length > 0
+          && !conflictRef.current
+          && syncStatusRef.current === 'saving'
+        ) {
+          queueMicrotask(() => void syncPendingChanges())
+        }
       }
     }
   }
@@ -215,21 +234,41 @@ export function usePersistentAppState() {
     if (pendingRef.current.length === 0) {
       setWorkingState(snapshot.state)
       setSyncStatus('saved')
-      persistSession()
+      void persistSession()
       return
     }
 
     rebuildWorkingState()
-    persistSession()
+    void persistSession()
     void syncPendingChanges()
   }
 
   useEffect(() => {
     mountedRef.current = true
+    activeStateIdRef.current = stateId
     let active = true
 
-    void loadSyncState().then((loaded) => {
-      if (!active) return
+    stateRef.current = null
+    confirmedRef.current = null
+    pendingRef.current = []
+    readyRef.current = false
+    syncingRef.current = false
+    conflictRef.current = null
+    queuedRemoteRef.current = null
+    cacheQueueRef.current = Promise.resolve()
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+    }
+    setState(null)
+    setStorageReady(false)
+    setUndoAction(null)
+    setSyncConflict(null)
+    setConflictVisible(false)
+    setSyncStatus('saved')
+
+    void loadSyncState(stateId).then((loaded) => {
+      if (!active || !isActiveNamespace(stateId)) return
       confirmedRef.current = {
         state: loaded.confirmedState,
         revision: loaded.revision,
@@ -249,22 +288,25 @@ export function usePersistentAppState() {
       queuedRemoteRef.current = null
       if (queuedRemote) acceptRemoteSnapshot(queuedRemote)
       if (pendingRef.current.length > 0) void syncPendingChanges()
-      else persistSession()
+      else void persistSession()
     })
 
-    const unsubscribe = subscribeToRemoteState(acceptRemoteSnapshot)
+    const unsubscribe = subscribeToRemoteState(stateId, (snapshot) => {
+      if (isActiveNamespace(stateId)) acceptRemoteSnapshot(snapshot)
+    })
     const retry = () => {
+      if (!isActiveNamespace(stateId)) return
       if (pendingRef.current.length > 0 && !conflictRef.current) {
         setSyncStatus('saving')
         void syncPendingChanges()
       } else if (syncStatusRef.current === 'offline') {
-        void refreshRemoteState()
+        void refreshRemoteState(stateId)
           .then((snapshot) => {
-            if (!snapshot || !mountedRef.current) return
+            if (!snapshot || !isActiveNamespace(stateId)) return
             confirmedRef.current = snapshot
             setWorkingState(snapshot.state)
             setSyncStatus('saved')
-            persistSession()
+            void persistSession()
           })
           .catch(() => undefined)
       }
@@ -273,15 +315,17 @@ export function usePersistentAppState() {
 
     return () => {
       active = false
-      mountedRef.current = false
       readyRef.current = false
+      if (activeStateIdRef.current === stateId) activeStateIdRef.current = ''
       window.removeEventListener('online', retry)
       unsubscribe()
     }
-  }, [])
+  }, [stateId])
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false
+      activeStateIdRef.current = ''
       if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current)
     }
   }, [])
@@ -307,7 +351,7 @@ export function usePersistentAppState() {
     }
     setWorkingState(normalized)
     if (!conflictRef.current) setSyncStatus('saving')
-    persistSession()
+    void persistSession()
     void syncPendingChanges()
   }
 
@@ -372,7 +416,7 @@ export function usePersistentAppState() {
     setConflictVisible(false)
     setSyncStatus('saving')
     rebuildWorkingState()
-    persistSession()
+    void persistSession()
     void syncPendingChanges()
   }
 

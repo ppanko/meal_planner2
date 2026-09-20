@@ -1,0 +1,25 @@
+.auth-code {
+  margin: 14px 0 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f6f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.invite-household-modal {
+  width: min(560px, 100%);
+}
+
+.invite-household-result {
+  display: grid;
+  gap: 10px;
+}
+
+.invite-household-result input {
+  width: 100%;
+}

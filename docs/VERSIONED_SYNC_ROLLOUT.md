@@ -1,117 +1,79 @@
-# Versioned-sync rollout
+# Versioned-sync and multi-household rollout
 
-The versioned-sync upgrade is deliberately split across two production
-releases. Do not combine them. This keeps the deployed direct-upsert client
-working if a migration or GitHub Pages deployment fails, and gives already-open
-tabs a compatibility window.
+The production database remains in the `versioned_sync = 'expand'` phase while the multi-household frontend is introduced. This preserves the guarded direct-write path needed by already-open legacy clients while the new client moves to household-aware compare-and-swap state.
 
-No paid Supabase feature, second project, or Supabase Branching environment is
-required. The normal GitHub Actions workflow and the existing Free-plan project
-are sufficient.
+No paid Supabase feature, second project, or Supabase Branching environment is required. The normal GitHub Actions workflow and existing Supabase project are sufficient.
 
-## Release 1: expand and deploy
+## Current expansion release
 
-The files currently in `supabase/migrations/` are expansion migrations. They:
+The immutable August migrations remain unchanged. The later multi-household expansion migration adds household identity and narrows the compatibility boundary without closing it.
 
-- add revisions, mutation IDs, and bounded state history;
-- install the compare-and-swap RPC used by the new frontend;
-- validate IDs and JSON payloads at the database boundary; and
-- temporarily retain direct insert/update access for the previous frontend.
+During this phase:
 
-Legacy direct writes pass through `guard_legacy_meal_planner_write`. The trigger
-ignores caller-supplied revision metadata, archives the prior state, increments
-the server revision, and records the authenticated user. The RPC marks its own
-writes so the trigger does not archive or increment them twice.
+- existing legacy household members may continue to use stale direct-upsert clients against `state_id = 'household'`;
+- new households use UUID-backed state IDs and the compare-and-swap RPC;
+- a new-household member is not authorized by the legacy direct-write policies or trigger;
+- planner reads, RPC writes, Realtime subscriptions, IndexedDB caches, and pending sync queues are scoped by household state ID;
+- `meal_planner_state` no longer has the old `CHECK (id = 'household')` constraint.
 
-The contract file remains in `supabase/contracts/` during this release. The
-Supabase CLI only applies `supabase/migrations/`, so contract cannot run before
-the matching frontend is live.
+`guard_legacy_meal_planner_write` remains only as an expansion compatibility bridge. It archives the old legacy-household state and advances the server revision while refusing non-legacy household writes.
 
-Before releasing:
+Before releasing the multi-household expansion:
 
-1. Confirm SEC-001 through SEC-003 are complete and retain the verified local
-   history bundles described in the security tracker.
-2. Confirm the repository and Supabase migration secrets are configured without
-   printing their values.
-3. Run `npm test`, `npm run typecheck`, `npm run test:coverage`, and
-   `npm run build`.
-4. Confirm `20260819020000_contract_versioned_sync.sql` is still under
-   `supabase/contracts/`, not `supabase/migrations/`.
+1. Run `npm test`, `npm run typecheck`, `npm run test:coverage`, and `npm run build`.
+2. Confirm `supabase/migrations/20260915000000_multi_household_expansion.sql` is the only new schema migration and no already-applied migration was edited.
+3. Confirm the obsolete August prepared contract is not present as an active contract or migration.
+4. Confirm no real user ID, household code, invitation token, project reference, or secret is present in committed files or logs.
+5. Build the frontend before applying migrations, then let the normal deployment workflow apply the expansion migration before deploying that already-built artifact.
 
-Merge only the expansion release to `master`. The Pages workflow verifies and
-builds first, applies the expansion migrations, and then deploys the already
-prepared frontend artifact.
+After deployment, manually verify:
 
-After the workflow succeeds:
+1. The existing legacy household opens, saves, reloads, and Realtime-syncs normally.
+2. An intentionally retained stale legacy client can still write the legacy household.
+3. A newly created household cannot read or write `state_id = 'household'` through the stale-client path.
+4. An admin can create a one-time invite; an unenrolled browser can redeem it and create a UUID-backed household state.
+5. A second browser can join that new household with its household-specific code.
+6. Legacy and new households never display or replay each other's local or remote state.
 
-1. Open the production app, make a harmless edit, reload, and confirm it remains.
-2. If an old tab was intentionally kept open for the test, make a different
-   harmless edit there and confirm a refreshed new client receives it.
-3. In the Supabase SQL Editor, inspect only non-secret rollout metadata:
+In the Supabase SQL Editor, rollout metadata may be checked without exposing secrets:
 
-   ```sql
-   select phase
-   from public.meal_planner_release_state
-   where id = 'versioned_sync';
+```sql
+select phase
+from public.meal_planner_release_state
+where id = 'versioned_sync';
 
-   select policyname, cmd
-   from pg_policies
-   where schemaname = 'public'
-     and tablename = 'meal_planner_state'
-   order by policyname;
-   ```
+select policyname, cmd
+from pg_policies
+where schemaname = 'public'
+  and tablename = 'meal_planner_state'
+order by policyname;
+```
 
-   The phase should be `expand`; read, insert, and update policies should be
-   present during this temporary window.
-
-Leave the database in `expand` for at least one normal usage cycle. Do not run
-contract while investigating any client, sync, or deployment problem.
+The production phase should remain `expand` throughout the compatibility window. Leave it there for at least one normal usage cycle and while investigating any auth, sync, local-cache, or deployment problem.
 
 ## Failure behavior during expansion
 
-- If verification or build fails, no database or Pages change occurs.
-- If the first migration succeeds and a later expansion migration fails, the
-  deployed client retains its prior direct-write grants and policies. Fix the
-  migration and retry; do not deploy manually around the failed workflow.
-- If all expansion migrations succeed but Pages deployment fails, the old
-  frontend continues through the guarded compatibility path. Retry or restore
-  Pages while leaving the database in `expand`.
-- If the new frontend has a regression, redeploy the preceding frontend while
-  the compatibility bridge remains. Do not promote contract.
+- If verification or build fails, do not migrate or deploy.
+- If the multi-household migration fails, fix forward with a new migration or correct an unapplied migration before retrying; never mark a failed migration applied merely to bypass it.
+- If migration succeeds but Pages deployment fails, the old frontend remains usable for legacy-household members through the compatibility bridge. Retry the Pages deployment while leaving the database in `expand`.
+- If the new frontend regresses, deploy the preceding compatible frontend while the bridge remains. Do not contract the database.
 
-Each SQL migration is rerunnable only through normal Supabase migration
-tracking. Never mark a failed migration as applied merely to bypass an error.
+## Later contract release
 
-## Release 2: contract
+The previously prepared `20260819020000_contract_versioned_sync.sql` is superseded and must not be promoted after the multi-household migration. Its timestamp and single-household assumptions predate the current schema.
 
-Contract is a separate, later release after the new client has been confirmed.
-Refresh or close intentionally retained old tabs first; direct-upsert builds are
-no longer supported after this point.
+Only after the multi-household frontend has been verified in production for a normal usage cycle should a **new later-timestamped contract migration** be authored. That migration should, against the household-aware schema that actually exists at that time:
 
-Promote the prepared contract with:
+- revoke temporary direct insert/update privileges on `meal_planner_state`;
+- drop the temporary legacy insert/update policies;
+- drop `guard_legacy_meal_planner_write` and any compatibility-only helper that is no longer needed;
+- remove obsolete `meal_planner_access`/legacy enrollment compatibility only if no deployed client still relies on it;
+- remove the build-time state-ID compatibility setting if no longer referenced; and
+- change `meal_planner_release_state.phase` from `expand` to `contract`.
 
-```bash
-git mv supabase/contracts/20260819020000_contract_versioned_sync.sql \
-  supabase/migrations/20260819020000_contract_versioned_sync.sql
-```
+The contract must be its own later release, with the full test/build suite rerun and intentionally retained stale tabs closed or refreshed first.
 
-Run the complete checks again, then release this move by itself. Do not combine
-contract with unrelated frontend or schema changes. The normal workflow applies
-the contract migration before redeploying the already-confirmed RPC frontend.
-
-The contract transaction:
-
-- revokes direct insert/update table privileges;
-- drops the temporary insert/update policies;
-- removes the compatibility trigger and function; and
-- changes the rollout marker from `expand` to `contract`.
-
-If contract SQL fails, its transaction rolls back and the compatibility path
-remains. Fix forward with a new migration; do not edit a migration after it has
-been applied to production.
-
-After contract succeeds, verify the production app can save and reload, then
-check:
+After contract succeeds, verify production state can still save/reload and check:
 
 ```sql
 select phase
@@ -125,13 +87,10 @@ where schemaname = 'public'
   and cmd in ('INSERT', 'UPDATE');
 ```
 
-The phase should be `contract` and `legacy_write_policies` should be `0`.
+Expected: `phase = 'contract'` and `legacy_write_policies = 0`.
 
 ## Recovery after contract
 
-Do not roll Pages back to the legacy direct-upsert frontend after contract. If
-the RPC frontend fails, fix it forward or deploy the last known-good RPC build.
-The current state and up to 50 prior confirmed revisions remain server-side;
-restoring one should be a deliberate SQL operation after taking a fresh backup.
-Never paste state content, user IDs, project references, or credentials into an
-issue, workflow log, or commit message.
+Do not roll Pages back to a direct-upsert frontend after contract. Fix forward or deploy the last known-good household-aware RPC build. The current state and bounded confirmed revision history remain server-side; restoring a revision should be a deliberate SQL operation after taking a fresh backup.
+
+Never paste state content, user IDs, project references, household codes, invitation tokens, or credentials into an issue, workflow log, or commit message.

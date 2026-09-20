@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => ({
   planner: {} as Record<string, unknown>,
   meals: {} as Record<string, unknown>,
   shopping: {} as Record<string, unknown>,
+  household: {
+    householdId: '11111111-1111-4111-8111-111111111111',
+    stateId: 'household',
+    householdName: 'Home',
+    isAdmin: false,
+  },
 }))
 
 vi.mock('@dnd-kit/core', () => ({
@@ -25,6 +31,17 @@ vi.mock('./meals/useMealsController', () => ({
 }))
 vi.mock('./shopping/useShoppingController', () => ({
   useShoppingController: () => mocks.shopping,
+}))
+vi.mock('./households/HouseholdContext', () => ({
+  useHouseholdSession: () => mocks.household,
+}))
+vi.mock('./households/InviteHouseholdModal', () => ({
+  InviteHouseholdModal: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Invite household modal">
+      <span>Invite modal</span>
+      <button onClick={onClose}>Mock close invite</button>
+    </div>
+  ),
 }))
 
 vi.mock('./planner/PlannerView', () => ({
@@ -60,6 +77,12 @@ import { createAppState } from './test/fixtures'
 
 beforeEach(() => {
   const state = createAppState()
+  mocks.household = {
+    householdId: '11111111-1111-4111-8111-111111111111',
+    stateId: 'household',
+    householdName: 'Home',
+    isAdmin: false,
+  }
   mocks.persistent = {
     state,
     storageReady: true,
@@ -133,6 +156,19 @@ describe('App', () => {
     expect(mocks.shopping.clearShoppingList).toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: /Planner/ }))
     expect(screen.getByText('Planner view')).toBeInTheDocument()
+  })
+
+  it('shows household invitations only to the designated admin', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<App />)
+    expect(screen.queryByRole('button', { name: 'Invite household' })).not.toBeInTheDocument()
+
+    mocks.household = { ...mocks.household, isAdmin: true }
+    rerender(<App />)
+    await user.click(screen.getByRole('button', { name: 'Invite household' }))
+    expect(screen.getByRole('dialog', { name: 'Invite household modal' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Mock close invite' }))
+    expect(screen.queryByText('Invite modal')).not.toBeInTheDocument()
   })
 
   it('wires the meal form and active drag overlay to controllers', async () => {
