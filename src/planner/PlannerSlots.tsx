@@ -42,7 +42,7 @@ export function MobilePlannerSlot({
               type="button"
               className="planner-meal-details-trigger"
               onClick={() => setSelectedMeal(meal)}
-              aria-label={`View ${meal.name} ingredients`}
+              aria-label={`View ${meal.name} details`}
             >
               <MealProteinDots meal={meal} ingredients={ingredients} proteinCategories={proteinCategories} />
               <span>{meal.name}</span>
@@ -154,7 +154,7 @@ export function PlannerSlot({
                   type="button"
                   className="planner-meal-details-trigger"
                   onClick={() => setSelectedMeal(mealData)}
-                  aria-label={`View ${mealData.name} ingredients`}
+                  aria-label={`View ${mealData.name} details`}
                 >
                   <MealProteinDots meal={mealData} ingredients={ingredients} proteinCategories={proteinCategories} />
                   <span>{mealData.name}</span>
