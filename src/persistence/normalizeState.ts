@@ -2,7 +2,7 @@ import { seedProteinCategories, seedState } from '../data'
 import { findIngredientByName } from '../ingredients/catalog'
 import { normalizeRecipeUrl } from '../meals/recipeDetails'
 import { defaultShoppingCategories } from '../types'
-import type { AppState, Ingredient, Meal, ShoppingCategory } from '../types'
+import type { AppState, Ingredient, KitchenPurchaseEvent, Meal, ShoppingCategory } from '../types'
 
 const unsafeObjectKeys = new Set(['__proto__', 'prototype', 'constructor'])
 
@@ -62,6 +62,27 @@ function normalizeShoppingCategories(state: Partial<AppState>): {
     shoppingCategoryOrder.push(category.id)
   }
   return { shoppingCategories, shoppingCategoryOrder }
+}
+
+function normalizePendingKitchenPurchaseEvents(value: unknown): KitchenPurchaseEvent[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((event): event is Record<string, unknown> => isRecord(event)
+      && typeof event.eventId === 'string'
+      && typeof event.householdId === 'string'
+      && typeof event.name === 'string'
+      && typeof event.purchasedAt === 'string')
+    .map((event) => ({
+      eventId: event.eventId as string,
+      householdId: event.householdId as string,
+      ingredientId: typeof event.ingredientId === 'string' ? event.ingredientId : null,
+      name: (event.name as string).trim(),
+      quantity: typeof event.quantity === 'number' && Number.isFinite(event.quantity) && event.quantity >= 0 ? event.quantity : null,
+      unit: typeof event.unit === 'string' && event.unit.trim() ? event.unit.trim() : null,
+      shoppingCategoryId: typeof event.shoppingCategoryId === 'string' && event.shoppingCategoryId.trim() ? event.shoppingCategoryId.trim() : null,
+      purchasedAt: event.purchasedAt as string,
+    }))
+    .filter((event) => Boolean(event.eventId && event.householdId && event.name && !Number.isNaN(Date.parse(event.purchasedAt))))
 }
 
 export function normalizeState(input: Partial<AppState> | unknown): AppState {
@@ -211,6 +232,7 @@ export function normalizeState(input: Partial<AppState> | unknown): AppState {
     plannerNotes: recordOrEmpty(state.plannerNotes) as AppState['plannerNotes'],
     shoppingPurchasesByWeek: recordOrEmpty(state.shoppingPurchasesByWeek) as AppState['shoppingPurchasesByWeek'],
     shoppingDismissedByWeek: recordOrEmpty(state.shoppingDismissedByWeek) as AppState['shoppingDismissedByWeek'],
+    pendingKitchenPurchaseEvents: normalizePendingKitchenPurchaseEvents(state.pendingKitchenPurchaseEvents),
     shoppingCategories,
     shoppingCategoryOrder,
   }
