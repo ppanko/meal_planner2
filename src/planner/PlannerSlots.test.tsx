@@ -88,7 +88,7 @@ describe('planner slot components', () => {
     expect(within(slot).queryByPlaceholderText('Add a note…')).not.toBeInTheDocument()
   })
 
-  it('opens meal ingredients from a mobile planned meal without changing remove behavior', async () => {
+  it('opens meal details from a mobile planned meal without changing remove behavior', async () => {
     const user = userEvent.setup()
     const onRemoveMeal = vi.fn()
     render(
@@ -105,7 +105,7 @@ describe('planner slot components', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: `View ${meal.name} ingredients` }))
+    await user.click(screen.getByRole('button', { name: `View ${meal.name} details` }))
     const dialog = screen.getByRole('dialog', { name: `${meal.name} meal details` })
     expect(within(dialog).getByText('1.5 cup Flour')).toBeInTheDocument()
     expect(within(dialog).getByText('2 each Eggs')).toBeInTheDocument()
@@ -163,7 +163,7 @@ describe('planner slot components', () => {
     expect(onNoteChange).toHaveBeenCalledWith('New desktop note')
   })
 
-  it('opens meal ingredients from a desktop planned meal', async () => {
+  it('opens meal details from a desktop planned meal', async () => {
     const user = userEvent.setup()
     render(
       <PlannerSlot
@@ -178,7 +178,7 @@ describe('planner slot components', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: `View ${meal.name} ingredients` }))
+    await user.click(screen.getByRole('button', { name: `View ${meal.name} details` }))
     const dialog = screen.getByRole('dialog', { name: `${meal.name} meal details` })
     expect(within(dialog).getByText('1.5 cup Flour')).toBeInTheDocument()
     expect(within(dialog).getByText('1 cup Milk')).toBeInTheDocument()

@@ -73,3 +73,10 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+.planner-meal-details-url {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
